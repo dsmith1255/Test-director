@@ -1,0 +1,3 @@
+Launches a normal practice session and associates the WIMNA Test Director app.
+Open the app in-game and press Start Full Program, Resume, or Individual Test.
+If this custom mode is unavailable in your Content Manager build, use Practice and open the same app.

@@ -1,0 +1,31 @@
+# Build outputs and local Python environments
+.buildvenv/
+.venv/
+build/
+dist/
+build_gui_probe/
+dist_gui_probe/
+*.spec
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Simulator telemetry and generated analysis are private local data.
+live_smoke_bridge/
+live_smoke_results*/
+live_smoke_store*/
+sample_release*/
+sample_replay*/
+sample_results*/
+WIMNA-results-*/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# Local discovery and imported case data
+discovery.json
+case_update6.json
+vehicle_data.json
+results_export/

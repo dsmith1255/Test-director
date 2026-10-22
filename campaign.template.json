@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "program_version": "0.3.4",
+  "time_budget_minutes": 315,
+  "schedule": [
+    {"activity": "preflight", "minutes": 15},
+    {"activity": "spa", "minutes": 65},
+    {"activity": "break", "minutes": 10},
+    {"activity": "silverstone_gp", "minutes": 60},
+    {"activity": "break", "minutes": 10},
+    {"activity": "imola", "minutes": 55},
+    {"activity": "break", "minutes": 10},
+    {"activity": "monza_gp", "minutes": 55},
+    {"activity": "reserve", "minutes": 20},
+    {"activity": "review_export", "minutes": 15}
+  ],
+  "track_order": ["spa", "silverstone_gp", "imola", "monza_gp"],
+  "tracks": {
+    "spa": {
+      "display_name": "Spa GP",
+      "track_id": "spa",
+      "layout_id": "default",
+      "role": "long-lap fuel, energy and thermal workload",
+      "minutes": 65,
+      "blocks": [
+        {"id": "SP C", "kind": "calibration", "laps_min": 3, "laps_max": 5, "instruction": "Three accepted learning laps at one SOC target; no Boost/Overtake. Freeze AUTO or apply a saved Manual profile."},
+        {"id": "SP R", "kind": "reference", "laps": 5, "instruction": "Continuous repeatable reference pace on the configured fuel, tire and energy profile; capture the full long-lap workload."},
+        {"id": "SP F", "kind": "fuel", "laps": 2, "instruction": "Use the contrasting fuel load; match fresh-tire preparation, battery start and deployment."},
+        {"id": "SP E", "kind": "energy", "laps": 4, "instruction": "Higher deployment for laps 1–2, then recovery map for laps 3–4; change only at the marked lap boundary."},
+        {"id": "SP M", "kind": "management", "laps": 3, "instruction": "Baseline map. Lift and coast at two braking zones selected from Spa reference telemetry."},
+        {"id": "SP V", "kind": "validation", "laps": 3, "instruction": "Run the held-out condition registered before this block; compare time, fuel, battery and available tire state."}
+      ]
+    },
+    "monza_gp": {
+      "display_name": "Modern Monza GP",
+      "track_id": "monza",
+      "layout_id": "default",
+      "role": "deployment, fuel saving, power restriction",
+      "minutes": 55,
+      "blocks": [
+        {"id": "MZ C", "kind": "calibration", "laps_min": 3, "laps_max": 5, "instruction": "Three accepted learning laps at one SOC target; no Boost/Overtake. Freeze AUTO or apply a saved Manual profile."},
+        {"id": "MZ R", "kind": "reference", "laps": 5, "instruction": "Repeatable race pace on the configured reference fuel, compound and energy profile."},
+        {"id": "MZ F", "kind": "fuel", "laps": 2, "instruction": "Use the contrasting fuel load; match tire preparation, battery and deployment."},
+        {"id": "MZ E", "kind": "energy", "laps": 4, "instruction": "Higher deployment for laps 1–2; recovery map for laps 3–4. Change only at the marked lap boundary."},
+        {"id": "MZ M", "kind": "management", "laps": 3, "instruction": "Baseline map. Lift before two braking zones selected from reference traces; coast to the usual braking point."},
+        {"id": "MZ V", "kind": "validation", "laps": 3, "instruction": "Use registered thermal warm-start prediction and supported restriction; otherwise run the preselected held-out check."}
+      ]
+    },
+    "imola": {
+      "display_name": "Imola",
+      "track_id": "imola",
+      "layout_id": "default",
+      "role": "braking, recovery and exit demand",
+      "minutes": 55,
+      "blocks": [
+        {"id": "IM C", "kind": "calibration", "laps_min": 3, "laps_max": 5, "instruction": "Three accepted learning laps at the common target; freeze or save the profile."},
+        {"id": "IM R", "kind": "reference", "laps": 5, "instruction": "Repeatable reference pace; keep brake and energy controls fixed."},
+        {"id": "IM F", "kind": "fuel", "laps": 2, "instruction": "Contrasting fuel load with other prepared conditions matched."},
+        {"id": "IM E", "kind": "energy", "laps": 4, "instruction": "Two higher-deployment laps, then two recovery laps."},
+        {"id": "IM M", "kind": "management", "laps": 3, "instruction": "Baseline map. Lift/coast at two reference-derived braking cues."},
+        {"id": "IM V", "kind": "validation", "laps": 3, "instruction": "Held-out check of the prediction registered before this block."}
+      ]
+    },
+    "silverstone_gp": {
+      "display_name": "Silverstone GP",
+      "track_id": "ks_silverstone",
+      "layout_id": "gp",
+      "role": "sustained-cornering tire workload",
+      "minutes": 60,
+      "blocks": [
+        {"id": "SI C", "kind": "calibration", "laps_min": 3, "laps_max": 5, "instruction": "Three accepted learning laps on the full GP layout; freeze or save the profile."},
+        {"id": "SI R", "kind": "reference", "laps": 5, "instruction": "Continuous reference stint; capture per-tire state and sector pace."},
+        {"id": "SI F", "kind": "fuel", "laps": 2, "instruction": "Contrasting fuel load with tire and battery state matched."},
+        {"id": "SI E", "kind": "energy", "laps": 4, "instruction": "Two higher-deployment laps, then two recovery laps."},
+        {"id": "SI M", "kind": "management", "laps": 3, "instruction": "Baseline map. Gentler throttle ramp at two exits selected from reference slip or throttle trace."},
+        {"id": "SI V", "kind": "validation", "laps": 3, "instruction": "Held-out short-run tire state, workload and pace check."}
+      ]
+    }
+  },
+  "policy": {
+    "review_export_minutes_reserved": 15,
+    "out_warmup_laps_per_track_budget": [4, 6],
+    "reference_compound": null,
+    "reference_fuel_l": null,
+    "contrasting_fuel_l": null,
+    "target_soc_band_j": null,
+    "target_soc_band_fraction": null,
+    "baseline_map": null,
+    "deployment_map": null,
+    "recovery_map": null,
+    "setup_hash": null,
+    "fuel_start_tolerance_l": null,
+    "battery_start_tolerance_j": null,
+    "battery_start_tolerance_fraction": null,
+    "management_lift_distance_m": 35,
+    "management_throttle_ramp_distance_m": 50,
+    "tire_start_tolerance": null,
+    "environment_tolerance_c": null,
+    "quality_rule_version": 1
+  },
+  "case_screening": {
+    "source": "specification transcription; replace with hashed Update6 import",
+    "authoritative": false,
+    "race_laps_assumed": 60,
+    "pit_loss_s": null,
+    "rounds_remaining": 8,
+    "plan_c_introduction_round": 10,
+    "plan_c_funding_reduction_fraction": 0.12,
+    "remaining_round_categories": {
+      "9": "Mixed Layout", "10": "Power Sensitive", "11": "Mixed Layout",
+      "12": "High Downforce", "13": "Power Sensitive", "14": "High Downforce",
+      "15": "Power Sensitive", "16": "Mixed Layout"
+    },
+    "case_track_temperature_c": [31, 34, 27, 29, 36, 24, 30, 33],
+    "round_proxy": {"Mixed Layout": "imola", "Power Sensitive": "monza_gp", "High Downforce": "silverstone_gp"}
+  },
+  "thermal_scenarios": {
+    "reference": {"track_temperature_c": 29, "ambient_c": null, "exposure": "case R4 context"},
+    "elevated": {"track_temperature_c": 33, "ambient_c": null, "exposure": "case R8 context"},
+    "severe": {"track_temperature_c": 36, "ambient_c": null, "exposure": "case R5 context"},
+    "warm_start": {"track_temperature_c": null, "ambient_c": null, "exposure": "selected live environment"}
+  }
+}

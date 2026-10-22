@@ -1,0 +1,31 @@
+name: Source checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test-only Lua runtime
+        run: python -m pip install -r requirements-test.txt
+      - name: Run Python and executable Lua tests
+        run: python -m unittest discover -s tests -q
+      - name: Replay all four tracks in synthetic mode
+        run: python -m wimna replay --output build/ci-replay --config campaign.template.json
+      - name: Check replay output
+        shell: pwsh
+        run: |
+          $state = Get-Content -LiteralPath build/ci-replay/scheduler_state.json -Raw | ConvertFrom-Json
+          $runs = @(Get-Content -LiteralPath build/ci-replay/results/run_summaries.json -Raw | ConvertFrom-Json)
+          if ($state.phase -ne 'complete' -or $state.block_results.Count -ne 24 -or $runs.Count -ne 24) {
+            throw 'Four-track replay did not complete all 24 synthetic blocks.'
+          }
+          if (@($runs | Where-Object evidence -ne 'SYNTHETIC').Count -ne 0) {
+            throw 'Synthetic replay mixed evidence categories.'
+          }

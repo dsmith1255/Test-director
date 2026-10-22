@@ -1,0 +1,20 @@
+{
+  "ambient_by_scenario_c": {
+    "reference": 25,
+    "elevated": 28,
+    "severe": 31
+  },
+  "ambient_c": null,
+  "ai_thermal_ambient_c": null,
+  "ai_thermal_track_c": null,
+  "plan_c_airflow_multiplier": 1.1,
+  "plan_c_airflow_range": [0.95, 1.2],
+  "traffic_airflow_multiplier": 0.75,
+  "higher_deployment_workload_multiplier": 1.08,
+  "thermal_repeats": 3,
+  "fuel_density_kg_per_l": null,
+  "tire_time_delta_plan_c_minus_baseline_s_range": null,
+  "stint_inputs": {},
+  "race_inputs": {},
+  "source_note": "Illustrative engineering assumptions only. Replace from installed FH26 data and Tyler's pilot before live decisions. Ambient values are independent inputs, not inferred from case track temperatures."
+}

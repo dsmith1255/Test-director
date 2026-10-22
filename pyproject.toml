@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wimna-test-director"
+version = "0.4.1"
+description = "Offline Assetto Corsa stint data collection and modeling"
+requires-python = ">=3.10"
+
+[project.scripts]
+wimna = "wimna.cli:main"
+
+[tool.setuptools]
+packages = ["wimna"]
