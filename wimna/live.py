@@ -909,6 +909,11 @@ class LiveDirector:
                 tire_label = current.get("planned_tire_label")
                 condition = current.get("condition_label")
                 collection_ended = current.get("status") == "ended"
+                crossings = current.get("recorded_lap_crossings")
+                crossing_count = crossings if isinstance(crossings, int) and not isinstance(crossings, bool) and crossings >= 0 else None
+                stint_crossings = current.get("stint_lap_crossings")
+                stint_count = (stint_crossings if isinstance(stint_crossings, int)
+                               and not isinstance(stint_crossings, bool) and stint_crossings >= 0 else None)
                 controller = ("AI" if current.get("is_ai_controlled") is True else
                               "human" if current.get("is_user_controlled") is True else "unknown")
                 conditions = [f"observed tire {compound or 'unavailable'}",
@@ -932,7 +937,11 @@ class LiveDirector:
                                     "until the planned pit stop." if active_stint else
                                     f"Data collection ready at {track_label}. Select a tire and condition, "
                                     "then start a stint."),
-                    "lap_progress": "Recorded laps and samples are retained without a fixed lap target.",
+                    "lap_progress": (f"{crossing_count} recorded lap crossings total"
+                                     + (f"; {stint_count} current stint" if active_stint and stint_count is not None else "")
+                                     + " (all qualities; no quota)"
+                                     if crossing_count is not None else
+                                     "Recorded laps and samples are retained without a fixed lap target."),
                     "target": "; ".join(conditions),
                     "next_action": ("Review or export the saved collection. A new game session starts a new "
                                     "physical record." if collection_ended else
@@ -1024,7 +1033,12 @@ class LiveDirector:
             instruction = "Check these values in RSS/pits, then press Confirm / Next only after applying them: " + targets
             next_action = "Manual driver attestation. No automatic setting readback is claimed."
         if view["phase"] == "unavailable_capability" and missing_targets:
-            next_action = "Missing targets: " + ", ".join(missing_targets) + ". Confirm for analysis-only/incomplete fallback."
+            next_action = ("Missing targets: " + ", ".join(missing_targets) +
+                           ". Press Confirm / Next once for analysis-only/incomplete fallback, then "
+                           "Confirm / Next again after warmup. Laps driven before Calibration do not count.")
+        if view["phase"] == "warmup":
+            next_action = ("Complete the out-lap/warmup, then press Confirm / Next. "
+                           "Only subsequent crossings can count toward this block.")
         if self.pending_learning:
             next_action = f"Confirm RSS acceptance for {len(self.pending_learning)} pending learning lap(s)."
         if view["phase"] == "next_block":

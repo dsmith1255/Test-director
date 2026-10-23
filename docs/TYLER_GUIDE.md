@@ -1,12 +1,18 @@
 # Tyler's WIMNA Test Director guide
 
-**Version 0.4.1 — release candidate.** Start with a short FH26/Spa check before collecting long stints. Version 0.4.1 has passed software and saved-data checks, but its new recorder and safer AI stop have **not yet been tested in game**. The earlier 0.4.0 app recorded an AI-driven Spa stint on the development computer; Tyler's installation, tire changes, and AI-to-human pit handoff still need checking.
+## If the older Full Program shows 0 attempted
+
+Version 0.4.1's **Start Full Program** opened the optional guided protocol. It could record telemetry while refusing to count laps until setup and learning confirmations were complete. The current **Start Recording** collects and counts raw lap crossings without those gates. End the older guided run, install the current app and start a new recording; the older raw data remains saved. A fresh run has a new physical state and cannot inherit tire or fuel continuity from the old run.
+
+If you intentionally continue the older guided run, **Confirm / Next** accepts the missing-target analysis-only fallback. After warmup, press it again and wait for **calibration**. Only later laps can count under that protocol, and each RSS-accepted learning lap needs **Confirm learning lap**. These steps are unnecessary for unrestricted recording.
+
+**Version 0.4.2 — release candidate.** Start with a short FH26/Spa check before collecting long stints. **Start Recording** and **Start AI Recording** are the primary actions; they collect without a quota, deadline or settings gate. Recorded crossings include out-laps and invalid laps, which remain labeled in the raw data. The 0.4.2 changes have passed software checks but have not yet been checked in game.
 
 ## Install once
 
 You need Assetto Corsa with your FH26 car, Content Manager and CSP already installed. WIMNA does not include a car or track.
 
-1. Download both **WIMNA-Test-Director-CM-0.4.1.zip** and **WIMNA-Test-Director-companion-0.4.1.zip** from the release. They serve different purposes.
+1. Download both **WIMNA-Test-Director-CM-0.4.2.zip** and **WIMNA-Test-Director-companion-0.4.2.zip** from the release. They serve different purposes.
 2. Drag the **CM ZIP** into Content Manager. In the installation preview, confirm that it adds **WimnaTestDirector** and the two session modes **WIMNA Test** and **WIMNA AI Thermal** to your selected Assetto Corsa installation. Install those items. If Content Manager asks, enable **WIMNA Test Director** in its app list.
 3. Extract the **companion ZIP** to a folder you can keep. Leave `wimna-director.exe` beside its `_internal` folder. Double-click the EXE before driving; it needs no Python installation or terminal. If it cannot find Assetto Corsa, use **Browse** to select the game's actual folder, then **Detect car and track IDs**. Do not assume another computer's installation path applies to yours.
 4. Keep the companion open while driving. It should show a live recorder status after you start a run. In Assetto Corsa, open **WIMNA Test Director** from the in-game app bar if its window does not appear automatically.
@@ -17,7 +23,7 @@ If **WIMNA Test** does not appear in Content Manager, ordinary **Practice** with
 
 1. In Content Manager, choose the installed **FH26** car and the modern **Spa** layout. Choose the actual tire, fuel, weather and track conditions you want to record. Select **WIMNA AI Thermal** for AI collection, or **WIMNA Test** for human collection.
 2. In the WIMNA window, enter **X** as the tire test label, the tire compound you selected, a condition label such as `baseline` or `hot`, and an optional setup/profile label. The labels are your notes; check the **Observed tire** and air/track readbacks separately.
-3. For AI driving, press **Start AI Data Collection**. Wait for **AI control readback: ON** and confirm the car is being driven by Assetto Corsa's AI. If it stays OFF or is unavailable, do not count the lap as AI-driven. For manual driving, press **Start Collection**.
+3. For AI driving, press **Start AI Recording**. Wait for **AI control readback: ON** and confirm the car is being driven by Assetto Corsa's AI. If it stays OFF or is unavailable, do not label the lap AI-driven. For manual driving, press **Start Recording**.
 4. Drive a short stint. Check that the WIMNA window says **Recorder: ON**, that its sample count increases, and that the companion shows new records. The first crossing after Start is a partial out-lap. You can collect as many useful laps as needed; collection mode has no timer or lap quota.
 5. End with **End Collection Run** and export a test result before planning longer stints. Ending recording does **not** brake the car or switch AI off. If AI is ON, let it continue driving and leave the Assetto Corsa session through the game menu. Use **Stop AI Driver at Rest** only when the car has come to a safe stop, its native speed reads **2 km/h or less**, and you are ready to steer; wait for **AI control readback: OFF** before taking over. If the car will not stop safely, exit the session with AI still in control.
 
@@ -36,7 +42,7 @@ A native tire change or session reset can close a stint automatically; start a n
 
 In the companion, click **Export Results** and choose a parent folder. It creates a dated **WIMNA-results-...** folder with the report, stint and lap tables, raw telemetry, model outputs and file hashes. Keep the folder intact when sharing it. The raw 0.4.1 telemetry is compressed as `.jsonl.gz`; the readable report and CSV tables are included too.
 
-Your ongoing recordings and companion data live under **Documents/WIMNA Test Director**. Keep that folder as the master copy. You can close and reopen the companion and import saved chunks again without intentionally duplicating records. Restarting Assetto Corsa creates a **new physical run**: its tires, fuel, battery and temperatures must be checked again. The **Resume** button belongs to the optional guided campaign; it does not claim that a new game session continues the same physical tire stint.
+Your ongoing recordings and companion data live under **Documents/WIMNA Test Director**. Keep that folder as the master copy. You can close and reopen the companion and import saved chunks again without intentionally duplicating records. Restarting Assetto Corsa creates a **new physical run**: its tires, fuel, battery and temperatures must be checked again. **Resume Guided Protocol** belongs to the optional campaign; it does not claim that a new game session continues the same physical tire stint.
 
 ## If something looks wrong
 

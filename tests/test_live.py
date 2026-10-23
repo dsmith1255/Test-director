@@ -721,14 +721,16 @@ class LiveDirectorTests(unittest.TestCase):
                 self.assertEqual(director.scheduler.state["phase"], "unavailable_capability")
                 self.assertIn("reference_fuel_l", result["director"]["unconfigured_targets"])
                 self.assertIn("analysis-only", result["director"]["next_action"])
+                self.assertIn("before Calibration do not count", result["director"]["next_action"])
                 self.assertEqual(director.scheduler.state["active_settings_check"]["outcomes"]
                                  ["missing:reference_fuel_l"]["status"], "unsupported")
                 extra = envelope(RUN1, 5, "ui_confirm")
                 folder = bridge / "runs" / RUN1
                 (folder / "000002.jsonl").write_text(json.dumps(extra) + "\n", encoding="utf-8")
-                director.poll()
+                result = director.poll()
                 self.assertEqual(director.scheduler.state["phase"], "warmup")
                 self.assertEqual(director.scheduler.state["mode"], "ANALYSIS_ONLY")
+                self.assertIn("Only subsequent crossings can count", result["director"]["next_action"])
 
 
 class GuiImportTests(unittest.TestCase):

@@ -214,7 +214,7 @@ class DirectorWindow:
         ttk.Label(frame, text="Collect labeled tire stints first; export raw data and condition-aware summaries at any time. Campaign targets below are optional defaults.",
                   wraplength=840, justify="left").grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
-        ttk.Label(frame, text="In game: Collect Data → label tire and conditions → drive AI or human → end stint in pits → swap tires → start next stint. Stop AI only with a driver ready to steer.",
+        ttk.Label(frame, text="In game: label tire and conditions → Start Recording or Start AI Recording → drive → end stint in pits → swap tires → start next stint. Stop AI only with a driver ready to steer.",
                   wraplength=840, justify="left").grid(row=row, column=0, columnspan=3, sticky="w")
         row += 1
         self.status = tk.StringVar(value="Waiting for bridge")

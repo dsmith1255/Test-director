@@ -211,6 +211,9 @@ local state = {
   writeError = nil,
   droppedSamples = 0,
   sampleCount = 0,
+  recordedCrossings = 0,
+  stintCrossings = 0,
+  lastCrossing = nil,
   sampleAccumulator = 0,
   chunkAccumulator = 0,
   stateAccumulator = 0,
@@ -485,6 +488,7 @@ local function startCollectionStint(reason)
   if not collectionEnabled() or not state.runId or
     (state.status ~= 'active' and state.status ~= 'paused') or state.collectionStintId then return end
   state.collectionStintNumber = state.collectionStintNumber + 1
+  state.stintCrossings = 0
   state.collectionStintId = string.format('%s-t%03d', state.runId, state.collectionStintNumber)
   -- A new stint can begin partway through a native lap; the next crossing is an out-lap.
   state.firstLapBoundaryPending = true
@@ -547,6 +551,8 @@ writeCurrentState = function()
     layout_id = layoutId or NULL,
     sim_time_s = state.simTimeS,
     samples_attempted = state.sampleCount,
+    recorded_lap_crossings = state.recordedCrossings,
+    stint_lap_crossings = state.collectionStintId and state.stintCrossings or NULL,
     dropped_samples = state.droppedSamples,
     write_ok = state.writeOk,
     write_error = state.writeError or NULL,
@@ -834,6 +840,9 @@ local function startRun(mode, block, autoAi)
   state.buffer = {}
   state.droppedSamples = 0
   state.sampleCount = 0
+  state.recordedCrossings = 0
+  state.stintCrossings = 0
+  state.lastCrossing = nil
   state.sampleAccumulator = 0
   state.chunkAccumulator = 0
   state.simTimeS = 0
@@ -905,7 +914,7 @@ local function startRun(mode, block, autoAi)
       setup_label_source = (mode == 'collection' or mode == 'ai_thermal') and
         optionalText(state.collectionSetupLabel) ~= NULL and 'DRIVER_ENTERED_UNVERIFIED' or NULL,
       individual_block = block or NULL,
-      app_version = '0.4.1',
+      app_version = '0.4.2',
       csp_version_code = safeCall(function() return ac.getPatchVersionCode() end, NULL),
       car_version = NULL,
       track_version = NULL,
@@ -1065,6 +1074,14 @@ local function detectSessionEvents()
           flags = flags,
           session_index = sessionIndex == nil and NULL or sessionIndex
         })
+        state.recordedCrossings = state.recordedCrossings + 1
+        if state.collectionStintId then state.stintCrossings = state.stintCrossings + 1 end
+        state.lastCrossing = {
+          lap_index = completed,
+          native_valid = lastValid,
+          cuts = readField(car, 'lastLapCutsCount'),
+          partial = partialRunLap
+        }
     end
   end
   if physicalStateChanged then state.firstLapBoundaryPending = true end
@@ -1337,9 +1354,15 @@ function script.windowMain()
     elseif observedAI == nil and state.runId then
       ui.textWrapped('AI control readback is unavailable. Treat control as unknown; do not release steering based on this app alone.')
     end
-    if ui.button('Start Full Program') then startRun('full') end
+    ui.textWrapped('Record any laps or tire stints. No settings checklist, accepted-lap quota or clock gates recording.')
+    collectionInputs()
+    if ui.button('Start Recording') then startRun('collection', nil, false) end
     ui.sameLine()
-    if ui.button('Resume') then startRun('resume') end
+    if ui.button('Start AI Recording') then startRun('collection', nil, true) end
+    ui.textWrapped('Optional guided C/R/F/E/M/V protocol: these acceptance rules apply only if you choose it.')
+    if ui.button('Start Guided Protocol') then startRun('full') end
+    ui.sameLine()
+    if ui.button('Resume Guided Protocol') then startRun('resume') end
     if ui.button('Individual Test') then state.individualPanel = not state.individualPanel end
     if state.individualPanel then
       for _, id in ipairs({ 'C', 'R', 'F', 'E', 'M', 'V' }) do
@@ -1349,12 +1372,7 @@ function script.windowMain()
         end
       end
     end
-    ui.text('Open data collection')
-    collectionInputs()
-    if ui.button('Start Collection') then startRun('collection', nil, false) end
-    ui.sameLine()
-    if ui.button('Start AI Data Collection') then startRun('collection', nil, true) end
-    ui.textWrapped('Collect tire, fuel, energy and thermal inputs in labeled stints. AI and human control are recorded per sample; both use simulator telemetry.')
+    ui.textWrapped('Tire, fuel, energy and thermal inputs are recorded in labeled stints. AI and human control are recorded per sample; both use simulator telemetry.')
     ui.textWrapped('For automatic AI takeover, select WIMNA AI Thermal in Content Manager. A pit handoff needs a driver ready to take control.')
     ui.textWrapped('Select the car and track in Content Manager first. A new start creates a new physical run.')
     return
@@ -1364,9 +1382,22 @@ function script.windowMain()
   local campaignBlock = d ~= nil and d.diagnostic_only ~= true and type(d.block_id) == 'string' and d.block_id ~= ''
   ui.text('Run: ' .. state.runId)
   ui.text('Experiment: ' .. state.status .. ' | Recorder: ' .. (state.writeOk and 'ON' or 'UNAVAILABLE'))
+  if collectionEnabled() then
+    local stintCount = state.collectionStintId and ('; ' .. state.stintCrossings .. ' current stint') or ''
+    ui.text('Recorded lap crossings: ' .. state.recordedCrossings .. ' total' .. stintCount ..
+      ' (includes out-laps and invalid laps)')
+  else
+    ui.text('Recorded lap crossings: ' .. state.recordedCrossings .. ' (guided acceptance is separate)')
+  end
+  if state.lastCrossing then
+    local lap = state.lastCrossing
+    local validity = type(lap.native_valid) == 'boolean' and (lap.native_valid and 'yes' or 'no') or 'unknown'
+    ui.textWrapped('Last crossing: lap ' .. tostring(lap.lap_index) .. ' | native valid: ' .. validity ..
+      ' | cuts: ' .. display(lap.cuts, 'unknown') .. (lap.partial and ' | partial out-lap' or ''))
+  end
   if state.writeError then ui.textWrapped(state.writeError) end
   if state.firstLapBoundaryPending then
-    ui.textWrapped('The first crossing after Start is recorded as a partial out-lap; begin counted laps after that line.')
+    ui.textWrapped('The first crossing after Start is recorded and labeled as a partial out-lap. It is included in the raw crossing count.')
   end
   if collectionEnabled() then
     local observedAI = aiReadback()
@@ -1421,6 +1452,7 @@ function script.windowMain()
     return
   end
   if campaignBlock then
+    ui.text('Director phase: ' .. display(d.state, 'unavailable'))
     ui.text('Block: ' .. d.block_id .. ' | Laps: ' .. display(d.lap_progress, '—'))
     ui.textWrapped(display(d.instruction, 'Director instruction unavailable'))
     ui.textWrapped('Target: ' .. display(d.target, 'Numeric target pending configuration'))
@@ -1446,9 +1478,12 @@ function script.windowMain()
       ui.textWrapped('Target: ' .. display(d.target, 'No campaign lap target'))
       ui.textWrapped('Next: ' .. display(d.next_action, 'End this run and select a configured campaign track.'))
     else
-      ui.textWrapped('Director offline or awaiting this run. Recording continues as diagnostic data; no campaign block is active until the companion confirms it.')
+      ui.textWrapped('COMPANION OFFLINE: raw laps are saved, but Full Program cannot count or advance them until wimna-director.exe is open and has imported this run.')
       ui.textWrapped(state.autoLaunchStatus)
     end
+  end
+  if d ~= nil and type(d.last_message) == 'string' and d.last_message ~= '' then
+    ui.textWrapped('Director detail: ' .. d.last_message)
   end
   if d ~= nil and type(d.campaign_notice) == 'string' and d.campaign_notice ~= '' then
     ui.textWrapped(d.campaign_notice)

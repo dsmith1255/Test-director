@@ -52,6 +52,8 @@ class CollectionIndexTests(unittest.TestCase):
                 "schema": 1, "run_id": "collection_run", "status": "active", "write_ok": True,
                 "track_id": "spa", "layout_id": "default", "collection_id": "collection_run",
                 "collection_stint_id": "s1", "planned_tire_label": "X",
+                "recorded_lap_crossings": 4,
+                "stint_lap_crossings": 3,
                 "requested_tyre_compound": "C3", "observed_tyre_compound": "C3",
                 "is_ai_controlled": True, "is_user_controlled": False}), encoding="utf-8")
             with LiveDirector(bridge, root / "data") as director:
@@ -60,6 +62,7 @@ class CollectionIndexTests(unittest.TestCase):
                 self.assertEqual(view["mode"], "DATA_COLLECTION")
                 self.assertEqual(view["ai_control_status"], "observed_on")
                 self.assertIn("observed tire C3", view["target"])
+                self.assertEqual(view["lap_progress"], "4 recorded lap crossings total; 3 current stint (all qualities; no quota)")
                 self.assertIsNone(director.store.get_run_assignment("collection_run"))
                 self.assertEqual(director.scheduler.state["phase"], "idle")
                 state = json.loads((bridge / "current_state.json").read_text(encoding="utf-8"))

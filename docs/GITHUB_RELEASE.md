@@ -1,6 +1,6 @@
-# GitHub handoff for WIMNA Test Director 0.4.1
+# GitHub handoff for WIMNA Test Director 0.4.2
 
-This is a **release candidate**. Version 0.4.0 recorded one local FH26/Spa AI stint; the 0.4.1 compact recorder and safe AI end have passed source tests but have not yet been checked in Assetto Corsa. Do not describe 0.4.1 as live verified on Tyler's installation.
+This is a **release candidate**. Version 0.4.2 makes unrestricted recording the primary in-game workflow and shows raw lap crossings independently of optional guided acceptance. It passed source tests and packaging checks but has not yet been checked in Assetto Corsa. Version 0.4.0 recorded one local FH26/Spa AI stint; 0.4.1 introduced compact recording and safe AI end. Do not describe 0.4.2 as live verified on Tyler's installation.
 
 ## Repository scope
 
@@ -27,23 +27,23 @@ Before attaching files, compare SHA-256 values in `dist/release-hashes.json` wit
 
 | Asset | Use |
 |---|---|
-| `WIMNA-Test-Director-CM-0.4.1.zip` | Drag into Content Manager; includes the Lua app and two modes. |
-| `WIMNA-Test-Director-companion-0.4.1.zip` | Extract and run the portable Windows companion. |
-| `WIMNA-Test-Director-source-0.4.1.zip` | Reproducible source handoff. GitHub source checkout also contains this material. |
-| `release-0.4.1-hashes.json` | Checksums and build time. |
+| `WIMNA-Test-Director-CM-0.4.2.zip` | Drag into Content Manager; includes the Lua app and two modes. |
+| `WIMNA-Test-Director-companion-0.4.2.zip` | Extract and run the portable Windows companion. |
+| `WIMNA-Test-Director-source-0.4.2.zip` | Reproducible source handoff. GitHub source checkout also contains this material. |
+| `release-0.4.2-hashes.json` | Checksums and build time. |
 | `WIMNA-Synthetic-Sample-Results.zip` | Optional example; clearly label it **SYNTHETIC**. |
 
 Do not attach the local `live_smoke_*` folders, `WIMNA-results-*` folders, the installed RSS archive, the case workbook, or personal installation paths.
 
 ## GitHub release text
 
-**Title:** WIMNA Test Director 0.4.1 release candidate
+**Title:** WIMNA Test Director 0.4.2 release candidate
 
 **Summary:** Installs a CSP Lua data-collection app and two Practice-derived Content Manager modes. The separate Windows companion imports and exports labeled tire stints and assumption-labeled model results. AI and human controller readback are retained with simulator telemetry. Collection has no hard clock or lap quota.
 
-**Changes in 0.4.1:** Ending collection leaves AI control unchanged. A separate AI stop is available only at a native speed readback of 2 km/h or less and requires native AI-OFF confirmation. Recorder chunks and exported raw telemetry are smaller; chunk imports are atomic and older 0.4.0 recordings remain readable.
+**Changes in 0.4.2:** Start Recording and Start AI Recording are the primary actions and collect every lap crossing without a settings checklist or acceptance quota. The C/R/F/E/M/V protocol is clearly optional. The overlay separates raw crossings from guided acceptance, and the companion shows the crossing count. The 0.4.1 safe AI stop and compact recorder remain included.
 
-**Verification:** 124 automated checks and a complete 24-block synthetic replay passed at packaging. The earlier 0.4.0 local FH26/Spa run saved 5,042 AI-controlled samples at 19.86 Hz with no reported gaps or drops; both laps were native invalid and there was no tire comparison. The new 0.4.1 writer, AI end action, tire handoff, restart recovery, and Tyler's installation remain unverified live. Custom thermal temperatures are analysis-only; direct RSS electrical power and native component temperatures were unavailable in the local test.
+**Verification:** 124 automated checks and a complete 24-block synthetic replay passed at packaging. The earlier 0.4.0 local FH26/Spa run saved 5,042 AI-controlled samples at 19.86 Hz with no reported gaps or drops; both laps were native invalid and there was no tire comparison. The 0.4.2 entry flow and crossing count, newer compact writer, AI end action, tire handoff, restart recovery, and Tyler's installation remain unverified live. Custom thermal temperatures are analysis-only; direct RSS electrical power and native component temperatures were unavailable in the local test.
 
 **Install:** Download the CM ZIP and companion ZIP, then follow `docs/TYLER_GUIDE.md`. Link to that page in the release description.
 
