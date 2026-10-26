@@ -135,6 +135,14 @@ class SessionLauncher(Protocol):
     def finalize(self, spec: SessionSpec, now_s: float, observed: Observation) -> None: ...
 
 
+class SessionReplayArchiver(Protocol):
+    """Optional post-exit native replay copy; never a telemetry acceptance gate."""
+
+    def prepare(self, spec: SessionSpec, now_s: float) -> None: ...
+    def archive(self, spec: SessionSpec, observed: Observation,
+                now_s: float) -> Mapping[str, Any]: ...
+
+
 def load_queue(path: str | Path, *, allow_verified_local: bool = False
                ) -> tuple[str, str, tuple[SessionSpec, ...]]:
     """Load an exact queue; live mode requires the guarded adapter and preflight."""
@@ -539,7 +547,8 @@ class OvernightQueue:
     """One durable transition per tick, with no automatic retry after a failure."""
 
     def __init__(self, queue_path: str | Path, checkpoint_path: str | Path,
-                 launcher: SessionLauncher):
+                 launcher: SessionLauncher,
+                 replay_archiver: SessionReplayArchiver | None = None):
         live_launcher = isinstance(launcher, ContentManagerUriLauncher)
         queue_id, queue_hash, sessions = load_queue(
             queue_path, allow_verified_local=live_launcher)
@@ -547,6 +556,7 @@ class OvernightQueue:
         self.queue_hash = queue_hash
         self.sessions = sessions
         self.launcher = launcher
+        self.replay_archiver = replay_archiver
         self.evidence = "MEASURED" if live_launcher else "SYNTHETIC"
         self.checkpoint_path = Path(checkpoint_path)
         if self.checkpoint_path.exists():
@@ -620,9 +630,18 @@ class OvernightQueue:
             # Persist before the external side effect: a crash cannot relaunch twice.
             self.state.update(phase="verifying", launched_at_s=now_s,
                               last_observed_at_s=None, comparison_limits=[],
-                              run_id=None, physical_session_id=None)
+                              run_id=None, physical_session_id=None,
+                              replay_prepare_error=None)
             self._event("launch_intent", now_s, session_id=spec.session_id,
                         expected=dict(spec.expected))
+            if self.replay_archiver is not None:
+                try:
+                    self.replay_archiver.prepare(spec, now_s)
+                except Exception as exc:
+                    self.state["replay_prepare_error"] = type(exc).__name__
+                    self._event("replay_prepare_unavailable", now_s,
+                                session_id=spec.session_id,
+                                reason=type(exc).__name__)
             try:
                 self.launcher.launch(spec, now_s)
             except Exception as exc:
@@ -744,6 +763,19 @@ class OvernightQueue:
                 return dict(self.state)
             if (obs.recorder_saved is True and obs.session_closed is True
                     and obs.recorder_active is False):
+                replay_capture: Mapping[str, Any] = {"status": "not_requested"}
+                if self.replay_archiver is not None:
+                    try:
+                        if self.state.get("replay_prepare_error") is not None:
+                            replay_capture = {"status": "unavailable", "reason":
+                                              "prepare_error:" + self.state["replay_prepare_error"]}
+                        else:
+                            replay_capture = self.replay_archiver.archive(spec, obs, now_s)
+                        if not isinstance(replay_capture, Mapping):
+                            raise TypeError("replay archiver returned no record")
+                    except Exception as exc:
+                        replay_capture = {"status": "unavailable",
+                                          "reason": "archive_error:" + type(exc).__name__}
                 self.state["completed"].append({
                     "session_id": spec.session_id,
                     "run_id": obs.values.get("run_id"),
@@ -753,6 +785,7 @@ class OvernightQueue:
                     "evidence": self.evidence,
                     "comparison_metadata_verified": not self.state["comparison_limits"],
                     "comparison_limits": list(self.state["comparison_limits"]),
+                    "replay_capture": dict(replay_capture),
                 })
                 self.state["last_physical_session_id"] = obs.physical_session_id
                 self.state["index"] += 1

@@ -8,8 +8,10 @@ save and shut down only when its exact AI/recorder identity is still verified.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import math
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -19,6 +21,7 @@ from .bridge_observation import (BridgeObservationProvider,
 from .overnight import (BridgeFinalizeRequestWriter, ContentManagerUriLauncher,
                         Observation, OvernightQueue, QueueError, SessionSpec,
                         load_queue)
+from .replay_capture import ReplayArchiver
 
 
 class LiveOvernightRunner:
@@ -181,6 +184,84 @@ def _path_map(record: Mapping[str, Any], key: str) -> dict[str, Path]:
     return result
 
 
+def checkpoint_from_config(config_path: str | Path) -> Path:
+    """Locate the lock/checkpoint without constructing or mutating a queue."""
+    config = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or config.get("schema_version") != 1:
+        raise QueueError("unsupported live runner config schema")
+    bridge_root = _required_path(config, "bridge_root")
+    value = config.get("checkpoint_path")
+    if value is None:
+        return bridge_root.parent / "overnight.checkpoint.json"
+    if not isinstance(value, str) or not Path(value).is_absolute():
+        raise QueueError("checkpoint_path must be an absolute path")
+    return Path(value)
+
+
+@contextmanager
+def runner_lock(checkpoint: Path, *, timeout_s: float = 0.0):
+    """Hold an OS file lock before queue construction; a second worker cannot stop it."""
+    if not math.isfinite(timeout_s) or timeout_s < 0 or timeout_s > 10:
+        raise QueueError("runner lock wait must be 0–10 seconds")
+    lock_path = checkpoint.with_name(checkpoint.name + ".runner.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        deadline = time.monotonic() + timeout_s
+        while True:
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, BlockingIOError) as exc:
+                if time.monotonic() >= deadline:
+                    raise QueueError("another overnight runner owns this checkpoint") from exc
+                time.sleep(0.1)
+        try:
+            yield lock_path
+        finally:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def prevent_idle_sleep():
+    """Keep Windows awake only while the local runner is active."""
+    if os.name != "nt":
+        yield
+        return
+    import ctypes
+
+    kernel = ctypes.windll.kernel32
+    kernel.SetThreadExecutionState.argtypes = [ctypes.c_uint]
+    kernel.SetThreadExecutionState.restype = ctypes.c_uint
+    es_continuous = 0x80000000
+    es_system_required = 0x00000001
+    if kernel.SetThreadExecutionState(es_continuous | es_system_required) == 0:
+        raise QueueError("Windows idle-sleep prevention unavailable")
+    try:
+        yield
+    finally:
+        kernel.SetThreadExecutionState(es_continuous)
+
+
 def build_live_runner(config_path: str | Path) -> LiveOvernightRunner:
     """Load an explicit local config; all requested files are checked again on launch."""
     config = json.loads(Path(config_path).read_text(encoding="utf-8"))
@@ -215,7 +296,12 @@ def build_live_runner(config_path: str | Path) -> LiveOvernightRunner:
         cm_executable=cm_executable, race_ini_path=race_ini_path,
         preset_files=presets, variant_manifest_files=variants,
         observation_provider=observer, session_finalizer=writer)
-    queue = OvernightQueue(queue_path, checkpoint, launcher)
+    replay_archiver = ReplayArchiver(
+        replay_temp=race_ini_path.parent.parent / "replay" / "temp",
+        output=checkpoint.parent / "replays",
+        replay_ini=race_ini_path.parent / "replay.ini")
+    queue = OvernightQueue(queue_path, checkpoint, launcher,
+                           replay_archiver=replay_archiver)
     return LiveOvernightRunner(queue, process_running=assetto_corsa_process_running)
 
 
@@ -229,8 +315,17 @@ def main(argv: list[str] | None = None) -> int:
     if not args.activate_local_live:
         parser.error("--activate-local-live is required; importing or configuring does not launch")
     try:
-        runner = build_live_runner(args.config)
-        state = runner.run()
+        # Queue construction mutates an interrupted active checkpoint to
+        # stopped. The lock must therefore be acquired before construction.
+        with runner_lock(checkpoint_from_config(args.config), timeout_s=5.0):
+            runner = build_live_runner(args.config)
+            with prevent_idle_sleep():
+                try:
+                    state = runner.run()
+                except (Exception, KeyboardInterrupt) as exc:
+                    if runner.queue.state.get("phase") not in {"stopped", "complete"}:
+                        runner.queue._fail(f"runner_unhandled:{type(exc).__name__}", None)
+                    state = runner._handle_stop(0.0)
     except (OSError, ValueError, QueueError) as exc:
         print(json.dumps({"phase": "not_started", "error": str(exc)}, sort_keys=True))
         return 2

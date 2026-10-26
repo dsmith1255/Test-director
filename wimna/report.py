@@ -315,6 +315,25 @@ def export_bundle(store: Store, destination: str | Path, *, config: dict,
                 f"| {_display(air, ' °C', 1)} / {_display(track, ' °C', 1)} "
                 f"| {ai_laps} / {exploratory_ai} / {human_laps} | {(stint.get('thermal') or {}).get('status', 'unavailable')} |")
         lines += ["", "The full per-wheel native wear, temperature, pressure, load and slip summaries, fuel, energy and lap quality records are in `collection_stints.json`. Native wear is not assumed to mean remaining tire life. An AI lap with native invalidity and zero reported cuts is exploratory only; the Plan C force would invalidate its native lap when applied, while other causes require separate review. A native-valid lap with no recorded flags is not independently verified contact- or spin-free because those fault channels are unavailable. Custom thermal temperatures are analysis-only.", ""]
+        replay_rows = []
+        seen_replays = set()
+        for stint in collection["stints"]:
+            comparison = stint.get("overnight_comparison") or {}
+            replay = comparison.get("replay_capture") or {}
+            run_id = stint.get("run_id")
+            if comparison.get("queue_owned") and run_id not in seen_replays:
+                replay_rows.append((run_id, replay))
+                seen_replays.add(run_id)
+        if replay_rows:
+            lines += ["### Native replay archives", "",
+                      "AC autosave files are copied after the recorder saves and the simulator exits. Archive metadata and SHA-256 hashes are in `collection_stints.json`; files remain in the selected queue checkpoint folder's `replays` subfolder. A copied file has not yet been checked for full-lap coverage or TV camera playback.", "",
+                      "| Run | Archive | Status | Full lap / TV view |",
+                      "|---|---|---|---|",]
+            for run_id, replay in replay_rows:
+                lines.append(f"| `{run_id}` | `{replay.get('archive_file') or 'unavailable'}` "
+                             f"| {replay.get('status') or 'unavailable'} "
+                             "| unverified / unverified |")
+            lines.append("")
         prototype = collection.get("package_prototype_analysis") or {}
         lines += ["### Plan C simulator prototype pairs", ""]
         if prototype.get("pairs"):

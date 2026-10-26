@@ -778,6 +778,9 @@ def _attach_overnight_comparison(stints: list[dict[str, Any]],
             "limits": sorted(set(reasons)),
             "queue_sha256": checkpoint_hash,
             "checkpoint_file": checkpoint_path.name,
+            "replay_capture": (dict(row["replay_capture"])
+                               if len(matches) == 1 and isinstance(
+                                   row.get("replay_capture"), dict) else None),
         }
 
 

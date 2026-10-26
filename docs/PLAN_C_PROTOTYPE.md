@@ -156,6 +156,24 @@ selected track layouts and two cross-track switches. The eight-session hourly
 sequence has not run unattended; keep it unarmed until an explicit start and
 current preflight.
 
+For an explicitly approved unattended start, the companion can spawn one
+bounded local worker without keeping a Codex chat active. The start command
+rechecks the current preflight, pending eight-session checkpoint and stopped
+game process. The status command is read-only and suitable for an hourly
+check:
+
+```powershell
+& $companionExe --start-overnight-background --config "$campaignDir\runner.json" --activate-local-live
+& $companionExe --overnight-status --config "$campaignDir\runner.json"
+```
+
+The worker owns track switching, a total deadline and per-session watchdogs.
+It takes a single-process lock and temporarily prevents Windows idle sleep;
+the request is released when it exits without changing the power plan. A
+stopped or stale checkpoint is reported as needing attention, with no automatic
+restart. A hard worker termination may leave the simulator running, so a
+person must inspect the game before any new queue is started.
+
 `wimna.overnight_prepare` prepares a short two-session Spa baseline → Plan C
 pilot from the **currently installed** car, WIMNA mode files, CM executable,
 and generated Spa presets. It writes exact file hashes, a queue, two variant
@@ -195,7 +213,8 @@ sample progress, and lap crossings. At the switch it requests exact-ID save
 and shutdown and waits for complete chunks, the app acknowledgment, and
 verified AC process exit before loading another preset. The checkpoint is
 `Documents/WIMNA Test Director/overnight.checkpoint.json` by default, beside
-the bridge, so local analysis can bind saved runs to the queue.
+the bridge for the short pilot. The eight-session campaign uses a checkpoint
+inside its preparation output folder to preserve the pilot record.
 
 Any wrong mode, missing recorder, stalled data, failed save, or uncertain
 process exit stops further launches. Where the exact active AI/recorder state
@@ -268,8 +287,8 @@ car physics archive, WIMNA app and modes, selected weather, track identity and
 surfaces files, plus the KN5 models referenced by the four exact layouts. No
 paid car or track file is copied into the preparation output. If any installed
 file changes after preparation, create a fresh output directory and prepare
-again. An existing `overnight.checkpoint.json` is never overwritten; archive
-the prior checkpoint before preparing a new queue.
+again. The campaign checkpoint is unique to that output directory; a prior
+pilot checkpoint is preserved. Reusing a campaign output directory is refused.
 
 All eight presets request the same 26 °C ambient and 29 °C road temperature,
 clear weather, car and assists. The generated preset does not apply tire, fuel,

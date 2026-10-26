@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 import sys
 import traceback
 
@@ -30,6 +31,14 @@ def _invoke_command(name: str, argv: list[str]) -> int:
         # The packaged spelling makes the action explicit without requiring a
         # second, redundant `run` word from a Windows shortcut or script.
         command_argv = ["run", *argv]
+    elif name == "--start-overnight-background":
+        from wimna.overnight_background import main as command_main
+
+        command_argv = ["start", *argv]
+    elif name == "--overnight-status":
+        from wimna.overnight_background import main as command_main
+
+        command_argv = ["status", *argv]
     else:
         raise ValueError(f"unknown packaged command: {name}")
     return int(command_main(command_argv))
@@ -39,7 +48,8 @@ def _run_command(name: str, argv: list[str]) -> int:
 
     # PyInstaller's --windowed executable has no attached stdout/stderr. A
     # command failure still needs a durable local explanation and exit code.
-    if sys.stdout is not None and sys.stderr is not None:
+    if (sys.stdout is not None and sys.stderr is not None and
+            os.environ.get("WIMNA_FORCE_COMMAND_LOG") != "1"):
         return _invoke_command(name, argv)
     log_path = _command_log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +65,9 @@ def _run_command(name: str, argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args and args[0] in ("--generate-presets", "--prepare-overnight", "--overnight-runner"):
+    if args and args[0] in ("--generate-presets", "--prepare-overnight",
+                           "--overnight-runner", "--start-overnight-background",
+                           "--overnight-status"):
         return _run_command(args[0], args[1:])
     if "--gui-self-test" in args:
         try:
@@ -123,12 +135,14 @@ def main(argv: list[str] | None = None) -> int:
         from wimna.cm_presets import build_campaign_pairs
         from wimna.models import thermal_assumption_profiles
         from wimna.overnight_live import build_live_runner
+        from wimna.overnight_background import start_background, status
         from wimna.overnight_prepare import prepare_campaign
         from wimna.scheduler import CampaignScheduler
         CampaignScheduler(_template_config())
         thermal_assumption_profiles()
         if not all(callable(item) for item in
-                   (build_campaign_pairs, build_live_runner, prepare_campaign)):
+                   (build_campaign_pairs, build_live_runner, prepare_campaign,
+                    start_background, status)):
             return 1
         return 0
     from wimna.gui import main as gui_main

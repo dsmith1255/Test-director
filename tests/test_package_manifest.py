@@ -85,6 +85,7 @@ class LuaManifestTests(unittest.TestCase):
                 with zipfile.ZipFile(package_source.OUTPUT) as archive:
                     self.assertIn("overnight.queue.example.json", archive.namelist())
                     for source in ("wimna/overnight_live.py",
+                                   "wimna/overnight_background.py",
                                    "wimna/overnight_prepare.py",
                                    "wimna/bridge_observation.py",
                                    "tests/test_overnight_live.py"):

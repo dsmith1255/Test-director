@@ -65,11 +65,11 @@ class CampaignPreparationTests(unittest.TestCase):
         self.race_ini.write_text("[RACE]\n", encoding="utf-8")
         self.output = self.root / "prepared"
 
-    def prepare(self) -> dict:
+    def prepare(self, output: Path | None = None) -> dict:
         return prepare_campaign(
             ac_root=self.ac_root, cm_exe=self.cm, preset_dir=self.presets,
             bridge_root=self.bridge, race_ini=self.race_ini,
-            car_version="2", output=self.output,
+            car_version="2", output=output or self.output,
             version_reader=lambda _: "1.2.3.4")
 
     def test_eight_session_shape_and_synthetic_completion(self) -> None:
@@ -105,6 +105,10 @@ class CampaignPreparationTests(unittest.TestCase):
             "recording_save_smoke_tested", "session_close_smoke_tested",
             "readbacks_smoke_tested")))
         self.assertFalse((self.bridge.parent / "overnight.checkpoint.json").exists())
+        config = json.loads(Path(result["config"]).read_text(encoding="utf-8"))
+        self.assertEqual(config["checkpoint_path"],
+                         str(self.output / "overnight.checkpoint.json"))
+        self.assertFalse((self.output / "overnight.checkpoint.json").exists())
         clone = dict(queue, launch_mode="dry_run")
         clone_path = self.root / "synthetic-clone.queue.json"
         clone_path.write_text(json.dumps(clone), encoding="utf-8")
@@ -170,18 +174,16 @@ class CampaignPreparationTests(unittest.TestCase):
             self.prepare()
         self.assertFalse(self.output.exists())
 
-    def test_existing_checkpoint_and_wrong_car_version_are_rejected(self) -> None:
+    def test_previous_pilot_checkpoint_is_preserved_and_wrong_car_version_rejected(self) -> None:
         checkpoint = self.bridge.parent / "overnight.checkpoint.json"
         checkpoint.write_text("keep pilot evidence", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "existing overnight checkpoint"):
-            self.prepare()
+        self.prepare()
         self.assertEqual(checkpoint.read_text(encoding="utf-8"), "keep pilot evidence")
-        checkpoint.unlink()
         car_ui = self.ac_root / "content" / "cars" / CAR_ID / "ui" / "ui_car.json"
         car_ui.write_text(json.dumps({"version": "different"}), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "car version differs"):
-            self.prepare()
-        self.assertFalse(self.output.exists())
+            self.prepare(self.root / "prepared-wrong-car")
+        self.assertFalse((self.root / "prepared-wrong-car").exists())
 
     def test_drop_threshold_is_explicit_and_bounded(self) -> None:
         arguments = dict(

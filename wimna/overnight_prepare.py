@@ -299,9 +299,9 @@ def prepare_campaign(*, ac_root: Path, cm_exe: Path, preset_dir: Path,
         raise ValueError("drop threshold must be an integer from 1 to 1000")
     if output.exists() and any(output.iterdir()):
         raise ValueError("campaign output directory must be new or empty")
-    checkpoint = bridge_root.parent / "overnight.checkpoint.json"
-    if checkpoint.exists():
-        raise ValueError("existing overnight checkpoint must be archived without deletion before preparing a new queue")
+    # Each campaign owns its own checkpoint. A prior Spa pilot can remain in
+    # Documents without being overwritten or blocking a new four-track run.
+    checkpoint = output / "overnight.checkpoint.json"
     car_ui = ac_root / "content" / "cars" / CAR_ID / "ui" / "ui_car.json"
     observed_version = _observed_car_version(car_ui)
     if observed_version is None or observed_version != car_version:

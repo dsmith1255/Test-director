@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,25 @@ from .replay import replay_campaign
 from .report import export_bundle
 from .store import Store, ingest_bridge
 from .vehicle_data import inspect_readable_car
+
+
+def _checkpoint_from_runner_config(path: str | Path) -> Path:
+    """Select only a checkpoint bound to the explicit campaign queue file."""
+    runner = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(runner, dict) or runner.get("schema_version") != 1:
+        raise ValueError("overnight runner config has an unsupported schema")
+    queue_raw, checkpoint_raw = runner.get("queue_path"), runner.get("checkpoint_path")
+    if not isinstance(queue_raw, str) or not isinstance(checkpoint_raw, str):
+        raise ValueError("overnight runner config lacks queue/checkpoint paths")
+    queue, checkpoint = Path(queue_raw), Path(checkpoint_raw)
+    if not queue.is_absolute() or not checkpoint.is_absolute():
+        raise ValueError("overnight queue and checkpoint paths must be absolute")
+    queue_hash = hashlib.sha256(queue.read_bytes()).hexdigest()
+    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+    if (not isinstance(saved, dict) or saved.get("schema_version") != 1
+            or saved.get("queue_sha256") != queue_hash):
+        raise ValueError("overnight checkpoint does not match the selected queue")
+    return checkpoint
 
 
 def data_directory() -> Path:
@@ -53,6 +73,8 @@ def parser() -> argparse.ArgumentParser:
     report.add_argument("--config")
     report.add_argument("--case-import")
     report.add_argument("--assumptions")
+    report.add_argument("--overnight-runner-config",
+                        help="explicit campaign runner.json for queue-owned comparison and replay records")
     report.add_argument("--output", required=True)
     commands.add_parser("gui", help="open the Windows driver companion")
     return result
@@ -83,9 +105,13 @@ def main(argv: list[str] | None = None) -> int:
         config = load_campaign(args.config)
         case = json.loads(Path(args.case_import).read_text(encoding="utf-8")) if args.case_import else None
         assumptions = json.loads(Path(args.assumptions).read_text(encoding="utf-8")) if args.assumptions else None
+        overnight_checkpoint = (_checkpoint_from_runner_config(args.overnight_runner_config)
+                                if args.overnight_runner_config else None)
         with Store(args.store) as store:
             from .analysis import analyze_store
-            forecasts, validation, parameters = analyze_store(store, config, case_data=case, assumptions=assumptions)
+            forecasts, validation, parameters = analyze_store(
+                store, config, case_data=case, assumptions=assumptions,
+                overnight_checkpoint=overnight_checkpoint)
             print(json.dumps(export_bundle(store, args.output, config=config, case_data=case,
                                            forecasts=forecasts, validation=validation,
                                            parameters=parameters), indent=2))

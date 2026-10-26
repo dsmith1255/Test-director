@@ -10,6 +10,16 @@ import launch_gui
 
 
 class CompanionCommandTests(unittest.TestCase):
+    def test_background_and_status_dispatch(self) -> None:
+        arguments = ["--config", r"C:\WIMNA\runner.json"]
+        with patch("wimna.overnight_background.main", return_value=0) as command:
+            self.assertEqual(launch_gui.main([
+                "--start-overnight-background", *arguments, "--activate-local-live"]), 0)
+            self.assertEqual(launch_gui.main(["--overnight-status", *arguments]), 0)
+        self.assertEqual(command.call_args_list[0].args[0],
+                         ["start", *arguments, "--activate-local-live"])
+        self.assertEqual(command.call_args_list[1].args[0], ["status", *arguments])
+
     def test_preset_generation_dispatch_never_starts_runner_or_gui(self) -> None:
         arguments = [r"C:\WIMNA\source.cmpreset", r"D:\Games\assettocorsa",
                      "--output", r"C:\WIMNA\presets"]

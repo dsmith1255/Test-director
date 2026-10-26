@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from copy import deepcopy
 from dataclasses import asdict, replace
+from pathlib import Path
 from statistics import mean, median, stdev
 from typing import Any, Mapping
 
@@ -1087,6 +1088,7 @@ def _validation(store: Store, runs: list[dict[str, Any]]) -> dict[str, Any]:
 def analyze_store(
     store: Store, config: Mapping[str, Any], case_data: Mapping[str, Any] | None = None,
     assumptions: Mapping[str, Any] | None = None,
+    overnight_checkpoint: str | Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Return ``(forecasts, validation, parameters)`` from saved raw data.
 
@@ -1098,7 +1100,7 @@ def analyze_store(
     if assumptions is not None:
         selected.update(assumptions)
     runs, grouped = _runs(store, config)
-    collection = analyze_collections(store)
+    collection = analyze_collections(store, overnight_checkpoint=overnight_checkpoint)
     selected_grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for track in config.get("track_order", []):
         groups = grouped.get(track, {})
