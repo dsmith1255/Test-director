@@ -84,6 +84,11 @@ class LuaManifestTests(unittest.TestCase):
                 package_source.main()
                 with zipfile.ZipFile(package_source.OUTPUT) as archive:
                     self.assertIn("overnight.queue.example.json", archive.namelist())
+                    for source in ("wimna/overnight_live.py",
+                                   "wimna/overnight_prepare.py",
+                                   "wimna/bridge_observation.py",
+                                   "tests/test_overnight_live.py"):
+                        self.assertIn(source, archive.namelist())
                     for mode_id in ("wimna-ai-baseline", "wimna-ai-plan-c"):
                         self.assertIn(
                             f"ac_app/extension/lua/new-modes/{mode_id}/mode.lua",

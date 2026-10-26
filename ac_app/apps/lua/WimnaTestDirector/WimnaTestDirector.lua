@@ -410,7 +410,7 @@ local function flush()
   -- makes such an incomplete chunk ineligible until the write has finished.
   if header then lines[#lines + 1] = json({ ['$'] = 'e', n = #state.buffer }) end
   local payload = table.concat(lines, '\n') .. '\n'
-  local ok, result = pcall(function() return io.save(filename, payload) end)
+  local ok, result = pcall(function() return io.save(filename, payload, true) end)
   if ok and result ~= false then
     state.chunkIndex = state.chunkIndex + 1
     state.buffer = {}
@@ -452,7 +452,9 @@ end
 local function sharedScalar(key)
   local value = safeCall(function() return ac.load(key) end, nil)
   if type(value) == 'string' and #value <= 32768 then return value end
-  if type(value) == 'number' or type(value) == 'boolean' then return value end
+  if type(value) == 'number' and value == value and value ~= math.huge and
+    value ~= -math.huge then return value end
+  if type(value) == 'boolean' then return value end
   return nil
 end
 
@@ -490,6 +492,11 @@ local function prototypeReadback()
     effect_status = sharedScalar('wimna.prototype.effect.v1') or NULL,
     physics_permission_reported = permission or NULL,
     force_native_lap_invalid_expected = nullableBoolean(forceInvalid),
+    worker_force_call_pairs_reported = sharedScalar('wimna.prototype.force_call_pairs.v1') or NULL,
+    worker_last_drag_n_issued = sharedScalar('wimna.prototype.last_drag_n.v1') or NULL,
+    worker_last_downforce_n_issued = sharedScalar('wimna.prototype.last_downforce_n.v1') or NULL,
+    worker_last_speed_m_s_readback = sharedScalar('wimna.prototype.last_speed_m_s.v1') or NULL,
+    worker_telemetry_status = sharedScalar('wimna.prototype.worker_telemetry_status.v1') or NULL,
     source = 'CSP_SESSION_SHARED_STORE',
     physical_effect_verified = false
   }
@@ -604,6 +611,8 @@ end
 writeCurrentState = function()
   if not bridge then return end
   local observedAI = aiReadback()
+  local sharedModeOk, sharedModeRaw = pcall(function() return ac.load('wimna.session_mode.v1') end)
+  local sharedVariantOk, sharedVariantRaw = pcall(function() return ac.load('wimna.prototype.variant.v1') end)
   local requestedAI = NULL
   if state.aiRequest then requestedAI = state.aiRequest.desired end
   local data = {
@@ -622,6 +631,13 @@ writeCurrentState = function()
     observed_tyre_compound = observedCompound() or NULL,
     session_mode_id = sessionModeReadback() or NULL,
     session_mode = sessionModeReadback() or NULL,
+    session_mode_shared_read_ok = sharedModeOk,
+    session_mode_shared_raw_type = type(sharedModeRaw),
+    session_mode_shared_raw = sharedModeOk and sharedModeRaw or NULL,
+    prototype_variant_shared_read_ok = sharedVariantOk,
+    prototype_variant_shared_raw_type = type(sharedVariantRaw),
+    prototype_variant_shared_raw = sharedVariantOk and sharedVariantRaw or NULL,
+    native_session_name = nativeSessionName() or NULL,
     prototype = prototypeReadback() or NULL,
     extended_physics_observed = nullableBoolean(readField(car, 'extendedPhysics')),
     extended_physics = nullableBoolean(readField(car, 'extendedPhysics')),
@@ -707,6 +723,83 @@ local function finishRun(reason, aiStopVerified)
   -- pending readback/timeout so a new run cannot assume control is settled.
   flush()
   writeCurrentState()
+end
+
+-- The local overnight controller can ask this app to save its exact current
+-- run. This path never turns AI control off. A successful write is not proof
+-- that Assetto Corsa exited; the controller must verify process exit itself.
+local function handleOvernightFinalizeRequest()
+  local mode = sessionModeReadback()
+  if mode ~= 'wimna-ai-baseline' and mode ~= 'wimna-ai-plan-c' then return end
+  if not bridge or not state.runId or state.status ~= 'active' or state.mode ~= 'collection' or
+    not state.writeOk or state.recordedCrossings < 1 then return end
+  local now = monotonicNow()
+  if state.overnightFinalizeNextCheckAt and now < state.overnightFinalizeNextCheckAt then return end
+  state.overnightFinalizeNextCheckAt = now + 0.5
+  local requestPath = pathJoin(bridge, 'overnight_finalize_request.json')
+  local ok, content = pcall(function() return io.load(requestPath, '') end)
+  if not ok or type(content) ~= 'string' or content == '' then return end
+  local parsedOk, request = pcall(function() return JSON.parse(content) end)
+  if not parsedOk or type(request) ~= 'table' then return end
+  local nonce = request.nonce
+  local minimum = request.min_recorded_lap_crossings
+  if request.schema_version ~= SCHEMA or request.command ~= 'save_and_shutdown' or
+    request.run_id ~= state.runId or request.physical_session_id ~= physicalSessionId() or
+    request.session_mode_id ~= mode or type(nonce) ~= 'string' or #nonce ~= 32 or
+    nonce:match('^[0-9a-f]+$') == nil or nonce == state.overnightFinalizeNonce or
+    type(minimum) ~= 'number' or minimum < 1 or minimum % 1 ~= 0 or
+    state.recordedCrossings < minimum or aiReadback() ~= true or
+    readField(car, 'extendedPhysics') ~= true then return end
+  local prototype = prototypeReadback()
+  local expectedVariant = overnightVariantForMode(mode)
+  local expectedEffect = expectedVariant == 'baseline' and 'none' or 'worker_requested_effect_unverified'
+  if not prototype or prototype.variant_id ~= expectedVariant or
+    not prototype.parameter_hash_verified or
+    prototype.parameter_hash_reported ~= EXPECTED_PROTOTYPE_HASHES[expectedVariant] or
+    prototype.physics_permission_reported ~= 1 or
+    prototype.effect_status ~= expectedEffect then return end
+  state.overnightFinalizeNonce = nonce
+  state.overnightFinalizeStatus = 'request_verified'
+  local runId = state.runId
+  local nativeId = physicalSessionId()
+  finishRun('overnight_switch', nil)
+  if not state.writeOk or #state.buffer ~= 0 or state.chunkIndex < 1 then return end
+  state.overnightFinalizeStatus = 'run_saved'
+  local lastChunk = pathJoin(runDirectory(), string.format('%06d.jsonl', state.chunkIndex))
+  local chunkOk, chunk = pcall(function() return io.load(lastChunk, '') end)
+  if not chunkOk or type(chunk) ~= 'string' or not chunk:find('"ui_end"', 1, true) then return end
+  state.overnightFinalizeStatus = 'chunk_verified'
+  local stateOk, persisted = pcall(function()
+    return JSON.parse(io.load(pathJoin(bridge, 'current_state.json'), ''))
+  end)
+  if not stateOk or type(persisted) ~= 'table' or persisted.run_id ~= runId or
+    persisted.physical_session_id ~= nativeId or persisted.status ~= 'ended' or
+    persisted.write_ok ~= true then return end
+  state.overnightFinalizeStatus = 'current_state_verified'
+  local ack = {
+    schema_version = SCHEMA,
+    command = 'save_and_shutdown',
+    run_id = runId,
+    physical_session_id = nativeId,
+    session_mode_id = mode,
+    nonce = nonce,
+    status = 'save_complete_shutdown_requested',
+    write_ok = true,
+    chunk_count = state.chunkIndex,
+    recorded_lap_crossings = state.recordedCrossings
+  }
+  local ackPath = pathJoin(bridge, 'overnight_finalize_ack.json')
+  local payload = json(ack)
+  local ackOk, ackResult = pcall(function() return io.save(ackPath, payload, true) end)
+  if not ackOk or ackResult == false then return end
+  local readOk, readback = pcall(function() return io.load(ackPath, '') end)
+  if not readOk or readback ~= payload then return end
+  state.overnightFinalizeStatus = 'ack_verified'
+  local shutdownOk, shutdownResult = pcall(function() return ac.shutdownAssettoCorsa() end)
+  if not shutdownOk or shutdownResult == false then
+    ack.status = 'save_complete_shutdown_failed'
+    pcall(function() io.save(ackPath, json(ack), true) end)
+  end
 end
 
 local function requestAiControl(desired, reason)
@@ -953,6 +1046,8 @@ local function startRun(mode, block, autoAi, startTrigger)
     end
   end
   state.aiNotice = nil
+  state.overnightFinalizeNextCheckAt = nil
+  state.overnightFinalizeNonce = nil
   state.collectionStintId = nil
   state.collectionStintNumber = 0
   state.collectionStintMeta = nil
@@ -1020,7 +1115,7 @@ local function startRun(mode, block, autoAi, startTrigger)
         mode == 'ai_thermal' and 'campaign_separate_collection_data_usable' or NULL,
       note = 'A fresh run ID never proves continuity of a physical stint.'
     }
-    local ok, result = pcall(function() return io.save(pathJoin(runDirectory(), 'manifest.json'), json(manifest)) end)
+    local ok, result = pcall(function() return io.save(pathJoin(runDirectory(), 'manifest.json'), json(manifest), true) end)
     if not ok or result == false then
       state.writeOk = false
       state.writeError = 'Could not write run manifest'
@@ -1402,6 +1497,16 @@ local function captureSample()
   c.prototype_physics_permission_reported = channel(prototype and prototype.physics_permission_reported ~= NULL and
     prototype.physics_permission_reported or nil, 'boolean_0_or_1', 'CSP_SESSION_SHARED_STORE')
   c.force_native_lap_invalid_expected = channel(forceInvalid, 'boolean', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_force_call_pairs = channel(prototype and prototype.worker_force_call_pairs_reported ~= NULL and
+    prototype.worker_force_call_pairs_reported or nil, 'count_worker_issued', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_last_drag_n = channel(prototype and prototype.worker_last_drag_n_issued ~= NULL and
+    prototype.worker_last_drag_n_issued or nil, 'N_worker_calculated', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_last_downforce_n = channel(prototype and prototype.worker_last_downforce_n_issued ~= NULL and
+    prototype.worker_last_downforce_n_issued or nil, 'N_worker_calculated', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_last_speed_m_s = channel(prototype and prototype.worker_last_speed_m_s_readback ~= NULL and
+    prototype.worker_last_speed_m_s_readback or nil, 'm/s_worker_readback', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_worker_telemetry_status = channel(prototype and prototype.worker_telemetry_status ~= NULL and
+    prototype.worker_telemetry_status or nil, 'status_not_physical_effect', 'CSP_SESSION_SHARED_STORE')
   c.collection_id = channel(collectionEnabled() and state.runId or nil, 'identifier', 'WIMNA_APP')
   c.collection_stint_id = channel(state.collectionStintId, 'identifier', 'WIMNA_APP')
   c.is_ai_controlled = channel(aiReadback(), 'boolean', 'CSP_STATE')
@@ -1453,6 +1558,7 @@ function script.update(dt)
     state.chunkAccumulator = 0
     flush()
   end
+  handleOvernightFinalizeRequest()
 end
 
 local function display(value, fallback)

@@ -51,6 +51,10 @@ def prototype_from_samples(manifest: Any, samples: list[Mapping[str, Any]],
         "sample_count": len(samples), "identity_sample_count": 0,
         "effect_statuses": [], "physics_permission_reported": None,
         "force_native_lap_invalid_expected": None,
+        "worker_force_call_pairs_first": None,
+        "worker_force_call_pairs_last": None,
+        "worker_execution_status": "unavailable",
+        "worker_telemetry_statuses": [],
         "physical_effect_verified": False, "issues": [],
     }
     if not isinstance(manifest, Mapping):
@@ -84,13 +88,16 @@ def prototype_from_samples(manifest: Any, samples: list[Mapping[str, Any]],
         result["issues"].append("prototype mode and variant differ")
 
     observed_variants, observed_hashes, statuses = set(), set(), set()
-    invalid_values, permissions = set(), set()
+    invalid_values, permissions, worker_statuses = set(), set(), set()
+    worker_counts: list[int] = []
     for data in samples:
         sample_variant = _field(data, "prototype_variant_requested", "identifier")
         sample_hash = _field(data, "prototype_parameter_hash_reported", "sha256_reported")
         status = _field(data, "prototype_effect_status", "status_not_physical_effect")
         permission = _field(data, "prototype_physics_permission_reported", "boolean_0_or_1")
         invalid = _field(data, "force_native_lap_invalid_expected", "boolean")
+        worker_calls = _field(data, "prototype_force_call_pairs", "count_worker_issued")
+        worker_status = _field(data, "prototype_worker_telemetry_status", "status_not_physical_effect")
         if sample_variant is not None and sample_hash is not None:
             result["identity_sample_count"] += 1
         if sample_variant is not None:
@@ -103,10 +110,26 @@ def prototype_from_samples(manifest: Any, samples: list[Mapping[str, Any]],
             permissions.add(permission)
         if invalid is not None:
             invalid_values.add(invalid)
+        if isinstance(worker_calls, int) and not isinstance(worker_calls, bool) and worker_calls >= 0:
+            worker_counts.append(worker_calls)
+        if worker_status is not None:
+            worker_statuses.add(worker_status)
     result["effect_statuses"] = sorted(statuses)
     result["physics_permission_reported"] = next(iter(permissions)) if len(permissions) == 1 else None
     result["force_native_lap_invalid_expected"] = (
         next(iter(invalid_values)) if len(invalid_values) == 1 else None)
+    result["worker_telemetry_statuses"] = sorted(worker_statuses)
+    if worker_counts:
+        result["worker_force_call_pairs_first"] = worker_counts[0]
+        result["worker_force_call_pairs_last"] = worker_counts[-1]
+    if len(worker_counts) >= max(1, math.ceil(0.95 * len(samples))):
+        monotonic = all(right >= left for left, right in zip(worker_counts, worker_counts[1:]))
+        if (variant == "baseline" and monotonic and set(worker_counts) == {0}
+                and worker_statuses == {"not_applicable"}):
+            result["worker_execution_status"] = "baseline_zero_calls_observed"
+        elif (variant == "plan_c" and monotonic and worker_counts[-1] > 0 and
+              "force_calls_issued_effect_unverified" in worker_statuses):
+            result["worker_execution_status"] = "force_calls_issued_effect_unverified"
     if not samples or result["identity_sample_count"] / len(samples) < 0.95:
         result["issues"].append("prototype identity absent from more than 5% of stint samples")
     if observed_variants != {variant} or observed_hashes != {reported_hash}:
@@ -139,6 +162,16 @@ def _eligible_laps(stint: Mapping[str, Any]) -> tuple[list[float], list[dict[str
             reasons.append("prototype identity unverified")
         if lap.get("controller_observed") != "AI":
             reasons.append("lap not wholly AI controlled")
+        variant = (stint.get("prototype") or {}).get("variant_id")
+        worker_calls = lap.get("prototype_force_call_pairs") or {}
+        first_calls = _number(worker_calls.get("first"))
+        last_calls = _number(worker_calls.get("last"))
+        if variant == "plan_c" and (
+                first_calls is None or last_calls is None or last_calls <= first_calls):
+            reasons.append("Plan C worker force calls not observed throughout lap")
+        if variant == "baseline" and (
+                first_calls != 0 or last_calls != 0):
+            reasons.append("baseline zero force calls not observed")
         if lap.get("native_cuts") != 0:
             reasons.append("zero native cuts not observed")
         if not lap.get("usable_for_exploratory_pace"):
@@ -179,6 +212,11 @@ def _conditions(a: Mapping[str, Any], b: Mapping[str, Any]) -> tuple[list[str], 
     if a.get("extended_physics") is not True or b.get("extended_physics") is not True:
         issues.append("extended physics not observed true")
     for item in (a, b):
+        queue_check = item.get("overnight_comparison") or {}
+        if queue_check.get("queue_owned") is True:
+            if queue_check.get("status") != "metadata_verified":
+                for reason in queue_check.get("limits") or ["overnight queue comparison record unavailable"]:
+                    issues.append("overnight comparison withheld: " + str(reason))
         if item.get("session_mode_changed_within_stint") or item.get("extended_physics_changed_within_stint"):
             issues.append("native mode or physics changed during stint")
         if item.get("compound_change_count", 0):
@@ -332,6 +370,11 @@ def analyze_package_pairs(stints: list[dict[str, Any]],
             if ((base.get("prototype") or {}).get("status") != "identity_verified" or
                     (upgrade.get("prototype") or {}).get("status") != "identity_verified"):
                 issues.append("prototype identity not verified")
+            if ((base.get("prototype") or {}).get("worker_execution_status") !=
+                    "baseline_zero_calls_observed" or
+                    (upgrade.get("prototype") or {}).get("worker_execution_status") !=
+                    "force_calls_issued_effect_unverified"):
+                issues.append("prototype worker execution telemetry unavailable or inconsistent")
             if issues:
                 rejected.append({"baseline_run_id": base.get("run_id"),
                                  "plan_c_run_id": upgrade.get("run_id"),
@@ -413,7 +456,8 @@ def analyze_package_pairs(stints: list[dict[str, Any]],
     paired_keys = used_baselines | used_upgrades
     unpaired = [{"run_id": item.get("run_id"), "stint_id": item.get("collection_stint_id"),
                  "variant_id": item["prototype"]["variant_id"],
-                 "prototype_issues": item["prototype"].get("issues") or []}
+                 "prototype_issues": item["prototype"].get("issues") or [],
+                 "overnight_comparison": item.get("overnight_comparison")}
                 for item in candidates
                 if (item.get("run_id"), item.get("collection_stint_id")) not in paired_keys]
     return {

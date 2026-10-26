@@ -8,7 +8,9 @@ No tire difference is promoted to a causal effect by this module.
 from __future__ import annotations
 
 import math
+import json
 from collections import defaultdict
+from pathlib import Path
 from statistics import median
 from typing import Any, Mapping
 
@@ -322,6 +324,11 @@ def _summarize_stint(store: Store, stint: Mapping[str, Any], samples: list[dict[
                     if start is not None and end is not None and
                     (when := _number(item.get("sim_time_s"))) is not None and start <= when <= end]
         lap["telemetry_sample_count"] = len(lap_data)
+        lap["prototype_force_call_pairs"] = _range([
+            number for item in lap_data
+            if (item.get("prototype_force_call_pairs") or {}).get("source") == "CSP_SESSION_SHARED_STORE"
+            and (number := _numeric_channel(item, "prototype_force_call_pairs",
+                                               "count_worker_issued")) is not None])
         lap["fuel_l"] = _range([number for item in lap_data
                                  if (number := _numeric_channel(item, "fuel", "L")) is not None])
         lap["battery_state_native"] = {
@@ -360,6 +367,7 @@ def _summarize_stint(store: Store, stint: Mapping[str, Any], samples: list[dict[
         "layout_id": manifest.get("layout_id"),
         "setup_hash": manifest.get("setup_hash"),
         "profile_hash": manifest.get("profile_hash"),
+        "start_trigger": manifest.get("start_trigger"),
         "session_mode": (stint.get("session_mode_observed")
                          if stint.get("boundary_source") == "explicit_start_event"
                          else stint.get("session_mode_observed") or manifest.get("session_mode")),
@@ -704,7 +712,77 @@ def _anchored_tire_scenarios(comparisons: list[dict[str, Any]],
     return result
 
 
-def analyze_collections(store: Store) -> dict[str, Any]:
+def _attach_overnight_comparison(stints: list[dict[str, Any]],
+                                 checkpoint_path: Path) -> None:
+    """Apply queue limits only to runs the checkpoint identifies by run ID."""
+    rows: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    claimed_runs: set[str] = set()
+    current_run_id = None
+    current_physical_id = None
+    current_limits: list[str] = []
+    checkpoint_hash = None
+    try:
+        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        if (isinstance(checkpoint, dict) and checkpoint.get("schema_version") == 1
+                and isinstance(checkpoint.get("completed"), list)):
+            checkpoint_hash = checkpoint.get("queue_sha256")
+            for row in checkpoint["completed"]:
+                if isinstance(row, dict) and isinstance(row.get("run_id"), str) and row["run_id"]:
+                    claimed_runs.add(row["run_id"])
+                if (isinstance(row, dict) and row.get("evidence") == "MEASURED"
+                        and isinstance(row.get("run_id"), str) and row["run_id"]
+                        and isinstance(row.get("physical_session_id"), str)
+                        and row["physical_session_id"]):
+                    rows[(row["run_id"], row["physical_session_id"])].append(row)
+            if isinstance(checkpoint.get("run_id"), str) and checkpoint["run_id"]:
+                current_run_id = checkpoint["run_id"]
+                current_physical_id = checkpoint.get("physical_session_id")
+                raw_limits = checkpoint.get("comparison_limits")
+                if isinstance(raw_limits, list) and all(isinstance(item, str) for item in raw_limits):
+                    current_limits = raw_limits
+    except (OSError, UnicodeError, ValueError):
+        pass
+    for stint in stints:
+        if stint.get("start_trigger") != "overnight_mode_auto":
+            continue
+        run_id, physical_id = stint.get("run_id"), stint.get("physical_session_id")
+        matches = rows.get((run_id, physical_id), [])
+        if not matches and run_id not in claimed_runs and run_id != current_run_id:
+            # Automatic CSP app startup also happens during supervised CM
+            # launches. The app trigger alone is not proof the queue owns it.
+            stint["overnight_comparison"] = {"status": "not_queue_claimed",
+                                               "queue_owned": False, "limits": []}
+            continue
+        reasons = []
+        if len(matches) == 1:
+            row = matches[0]
+            limits = row.get("comparison_limits")
+            if not isinstance(limits, list) or any(not isinstance(item, str) for item in limits):
+                reasons.append("overnight comparison limits unavailable")
+            else:
+                reasons.extend(limits)
+            if row.get("comparison_metadata_verified") is not True:
+                reasons.append("overnight comparison metadata unverified")
+        elif len(matches) > 1:
+            reasons.append("overnight comparison checkpoint has duplicate run/native entries")
+        elif run_id in claimed_runs:
+            reasons.append("overnight checkpoint names run with a different native session ID")
+        else:
+            reasons.extend(current_limits)
+            reasons.append("overnight queue session has no saved completion record")
+            if current_physical_id != physical_id:
+                reasons.append("overnight in-progress native session ID differs")
+        stint["overnight_comparison"] = {
+            "status": "metadata_verified" if not reasons else "unmatched_raw_only",
+            "queue_owned": True,
+            "limits": sorted(set(reasons)),
+            "queue_sha256": checkpoint_hash,
+            "checkpoint_file": checkpoint_path.name,
+        }
+
+
+def analyze_collections(store: Store, *,
+                        overnight_checkpoint: str | Path | None = None) -> dict[str, Any]:
     """Summarize all physical stints, including legacy runs, without controller gates."""
     manifests = {run["run_id"]: run for run in store.iter_runs()}
     samples_by_stint: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -722,6 +800,9 @@ def analyze_collections(store: Store) -> dict[str, Any]:
         if run is not None:
             stints.append(_summarize_stint(store, item, samples_by_stint.pop(key, []),
                                           run["manifest"], run["mode"]))
+    _attach_overnight_comparison(
+        stints, Path(overnight_checkpoint) if overnight_checkpoint is not None
+        else store.directory.parent / "overnight.checkpoint.json")
     comparisons = _comparisons(stints)
     anchors = _human_anchors(stints)
     package_prototype_analysis = analyze_package_pairs(stints, anchors)

@@ -67,6 +67,9 @@ class PlanCModesTests(unittest.TestCase):
             self.assertEqual(saved["wimna.prototype.effect.v1"],
                              "worker_requested_effect_unverified" if variant == "plan_c"
                              else "none")
+            self.assertEqual(saved["wimna.prototype.force_call_pairs.v1"], 0)
+            self.assertEqual(saved["wimna.prototype.worker_telemetry_status.v1"],
+                             "pending" if variant == "plan_c" else "not_applicable")
         self.assertEqual(self.mode("wimna-ai-baseline").globals().calls, 0)
         self.assertEqual(self.mode("wimna-ai-plan-c").globals().calls, 1)
 
@@ -76,9 +79,11 @@ class PlanCModesTests(unittest.TestCase):
             return {line.strip() for line in text.splitlines()
                     if line.startswith(("BASE_MODE", "START_TYPE",
                                         "ALLOW_PHYSICS_ALTERATIONS",
-                                        "FORCE_EXTENDED_PHYSICS", "ASSOCIATED_APPS"))}
+                                        "FORCE_EXTENDED_PHYSICS", "IMMEDIATE_START",
+                                        "ASSOCIATED_APPS"))}
         self.assertEqual(settings("wimna-ai-baseline"),
                          settings("wimna-ai-plan-c"))
+        self.assertIn("IMMEDIATE_START = 1", settings("wimna-ai-baseline"))
 
     def test_permission_rejection_does_not_start_force_worker(self):
         lua = self.mode("wimna-ai-plan-c", allowed=False)
@@ -103,10 +108,12 @@ class PlanCModesTests(unittest.TestCase):
         lua.execute("""
             script = {}
             forces = {}
+            saved = {}
             velocity = {x = 0, y = 0, z = -80}
             sim = {ambientTemperature = 20}
             vec3 = function() return {x = 0, y = 0, z = 0} end
-            ac = {getSim = function() return sim end}
+            ac = {getSim = function() return sim end,
+                  store = function(key, value) saved[key] = value end}
             physics = {
               getPointVelocity = function() return velocity end,
               addForce = function(carIndex, origin, posLocal, force, forceLocal)
@@ -146,6 +153,17 @@ class PlanCModesTests(unittest.TestCase):
         lua.globals().script.update(0.003)
         self.assertLessEqual(forces[3]["z"], params["max_drag_n"])
         self.assertLessEqual(-forces[4]["y"], params["max_downforce_n"])
+        self.assertIsNone(lua.globals().saved["wimna.prototype.force_call_pairs.v1"])
+        lua.globals().velocity.z = -80
+        for _ in range(334):
+            lua.globals().script.update(0.003)
+        saved = lua.globals().saved
+        self.assertGreaterEqual(saved["wimna.prototype.force_call_pairs.v1"], 334)
+        self.assertGreater(saved["wimna.prototype.last_drag_n.v1"], 0)
+        self.assertGreater(saved["wimna.prototype.last_downforce_n.v1"], 0)
+        self.assertAlmostEqual(saved["wimna.prototype.last_speed_m_s.v1"], 80.0)
+        self.assertEqual(saved["wimna.prototype.worker_telemetry_status.v1"],
+                         "force_calls_issued_effect_unverified")
 
 
 if __name__ == "__main__":

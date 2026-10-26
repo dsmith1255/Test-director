@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wimna.cm_presets import (CAR_ID, CUSTOM_MODE_PREFIX, MODES, PresetError,
+from wimna.cm_presets import (CAR_ID, CUSTOM_MODE_PREFIX, MODES, TRACKS,
+                              PresetError, build_campaign_pairs,
                               build_spa_pair)
 
 
@@ -18,9 +19,15 @@ class CmPresetTests(unittest.TestCase):
         self.root = Path(self.scratch.name)
         self.ac_root = self.root / "ac"
         for path in (self.ac_root / "content" / "cars" / CAR_ID,
-                     self.ac_root / "content" / "tracks" / "spa",
                      self.ac_root / "content" / "weather" / "3_clear"):
             path.mkdir(parents=True)
+        for folder_id, _, name, ui_relative, model_relative in TRACKS.values():
+            folder = self.ac_root / "content" / "tracks" / folder_id
+            ui_file = folder / ui_relative
+            ui_file.parent.mkdir(parents=True, exist_ok=True)
+            ui_file.write_text(json.dumps({"name": name}), encoding="utf-8")
+            (folder / model_relative).write_text("[MODEL_0]\nFILE=x.kn5\n",
+                                                 encoding="utf-8")
         self.source = self.root / "user-presets" / "modern f1.cmpreset"
         self.source.parent.mkdir()
         self.template = {
@@ -60,6 +67,8 @@ class CmPresetTests(unittest.TestCase):
             self.assertFalse(preset["RealConditions"])
             self.assertEqual(preset["Mode"], CUSTOM_MODE_PREFIX + item["mode_id"])
             self.assertEqual(json.loads(preset["ModeData"])["Version"], 2)
+            self.assertNotIn("LapsNumber", json.loads(preset["ModeData"]))
+            self.assertNotIn("RaceGridSerialized", json.loads(preset["ModeData"]))
             first.append(preset)
         self.assertEqual({item["mode_id"] for item in manifest["presets"]},
                          set(MODES.values()))
@@ -85,6 +94,49 @@ class CmPresetTests(unittest.TestCase):
     def test_refuses_missing_installed_target(self) -> None:
         with self.assertRaisesRegex(PresetError, "not installed"):
             build_spa_pair(self.source, self.output, self.root)
+
+    def test_four_track_pairs_use_exact_installed_layouts(self) -> None:
+        original = self.source.read_bytes()
+        manifest = build_campaign_pairs(self.source, self.output, self.ac_root)
+        self.assertEqual(len(manifest["presets"]), 8)
+        self.assertEqual(self.source.read_bytes(), original)
+        self.assertEqual(manifest["status"], "GENERATED_NOT_LIVE_VERIFIED")
+        self.assertEqual(manifest["duration_status"],
+                         "PRACTICE_PRESET_HAS_NO_HOURLY_END_CONTROL")
+        self.assertEqual([x["content_manager_track_id"] for x in
+                          manifest["installed_track_identities"]], list(TRACKS))
+        for cm_track_id in TRACKS:
+            records = [x for x in manifest["presets"]
+                       if x["content_manager_track_id"] == cm_track_id]
+            self.assertEqual(len(records), 2)
+            self.assertEqual({x["mode_id"] for x in records}, set(MODES.values()))
+            presets = []
+            for record in records:
+                path = self.output / record["file"]
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                                 record["sha256"])
+                preset = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(preset["TrackId"], cm_track_id)
+                self.assertEqual(preset["CarId"], CAR_ID)
+                self.assertEqual(preset["Temperature"], 26.0)
+                self.assertEqual(preset["crtv"], 29.0)
+                self.assertNotIn("LapsNumber", json.loads(preset["ModeData"]))
+                self.assertNotIn("RaceGridSerialized", json.loads(preset["ModeData"]))
+                presets.append(preset)
+            for preset in presets:
+                preset.pop("Mode")
+            self.assertEqual(presets[0], presets[1])
+        silverstone = next(x for x in manifest["installed_track_identities"]
+                           if x["content_manager_track_id"] == "ks_silverstone/gp")
+        self.assertEqual(silverstone["track_id"], "ks_silverstone")
+        self.assertEqual(silverstone["layout_id"], "gp")
+        self.assertEqual(len(silverstone["models_ini_sha256"]), 64)
+
+    def test_refuses_wrong_silverstone_layout_identity(self) -> None:
+        ui = self.ac_root / "content" / "tracks" / "ks_silverstone" / "ui" / "gp" / "ui_track.json"
+        ui.write_text(json.dumps({"name": "Silverstone - National"}), encoding="utf-8")
+        with self.assertRaisesRegex(PresetError, "identity differs"):
+            build_campaign_pairs(self.source, self.output, self.ac_root)
 
 
 if __name__ == "__main__":

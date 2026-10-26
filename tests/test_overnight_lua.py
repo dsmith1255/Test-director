@@ -52,6 +52,9 @@ class OvernightLuaTests(unittest.TestCase):
             commands = {}
             shared = {}
             saved = {}
+            ensuredPaths = {}
+            shutdownCalls = 0
+            finalizeRequest = nil
             physicsPermission = true
             ac = {
               FolderID = { Documents = 1, CurrentTrack = 2,
@@ -71,6 +74,10 @@ class OvernightLuaTests(unittest.TestCase):
               getSessionName = function() return 'Practice' end,
               getPatchVersionCode = function() return 3465 end,
               getGameDeltaT = function() return 0.05 end,
+              shutdownAssettoCorsa = function()
+                shutdownCalls = shutdownCalls + 1
+                return true
+              end,
               load = function(key) return shared[key] end,
               checksumSHA256 = function(value) return python_sha256(value) end
             }
@@ -84,13 +91,20 @@ class OvernightLuaTests(unittest.TestCase):
             JSON = {
               stringify = function(value) return string.format('%q', tostring(value)) end,
               parse = function(value)
+                if value:find('save_and_shutdown', 1, true) then return finalizeRequest end
+                if value:find('"status":"ended"', 1, true) then
+                  return { run_id = appState.runId,
+                    physical_session_id = appState.runId .. '-s0',
+                    status = 'ended', write_ok = true }
+                end
                 return { version = value:match('"version"%s*:%s*"([^"]+)"'),
                   variant = value:match('"variant"%s*:%s*"([^"]+)"') }
               end
             }
             io.createDir = function() return true end
-            io.save = function(path, payload)
+            io.save = function(path, payload, ensure)
               saved[path] = payload
+              ensuredPaths[path] = ensure == true
               return true
             end
             io.load = function(path) return saved[path] end
@@ -107,8 +121,10 @@ class OvernightLuaTests(unittest.TestCase):
         """)
         self.app = self.lua.execute(SOURCE + "\nreturn { state = state, "
             "startRun = startRun, captureSample = captureSample, "
-            "prototypeReadback = prototypeReadback }")
+            "prototypeReadback = prototypeReadback, "
+            "handleOvernightFinalizeRequest = handleOvernightFinalizeRequest }")
         self.state = self.app.state
+        self.lua.globals().appState = self.state
         self.shared = self.lua.globals().shared
         self.car = self.lua.globals().car
         self.commands = self.lua.globals().commands
@@ -124,6 +140,9 @@ class OvernightLuaTests(unittest.TestCase):
         self.shared["wimna.prototype.permission.v1"] = permission
         self.shared["wimna.prototype.native_invalid_expected.v1"] = (
             0 if variant == "baseline" else 1)
+        self.shared["wimna.prototype.force_call_pairs.v1"] = 0
+        self.shared["wimna.prototype.worker_telemetry_status.v1"] = (
+            "not_applicable" if variant == "baseline" else "pending")
 
     def manifest(self) -> dict:
         key = f"documents/WIMNA Test Director/bridge/runs/{self.state.runId}/manifest.json"
@@ -201,6 +220,25 @@ class OvernightLuaTests(unittest.TestCase):
         self.assertEqual(sample["aero_drag_native"]["value"], 0.9)
         self.assertFalse(sample["force_native_lap_invalid_expected"]["value"])
         self.assertEqual(sample["prototype_effect_status"]["value"], "none")
+        self.assertEqual(sample["prototype_force_call_pairs"]["value"], 0)
+        self.assertEqual(sample["prototype_force_call_pairs"]["unit"], "count_worker_issued")
+        self.assertEqual(sample["prototype_worker_telemetry_status"]["value"], "not_applicable")
+        self.assertEqual(sample["prototype_last_drag_n"]["quality"], "unavailable")
+        self.shared["wimna.prototype.force_call_pairs.v1"] = 4
+        self.shared["wimna.prototype.last_drag_n.v1"] = 65.0
+        self.shared["wimna.prototype.last_downforce_n.v1"] = 180.0
+        self.shared["wimna.prototype.last_speed_m_s.v1"] = 55.0
+        self.shared["wimna.prototype.worker_telemetry_status.v1"] = "force_calls_issued_effect_unverified"
+        self.app.captureSample()
+        sample = [item for item in self.state.buffer.values()
+                  if item["kind"] == "sample"][-1]["data"]
+        self.assertEqual(sample["prototype_force_call_pairs"]["value"], 4)
+        self.assertEqual(sample["prototype_last_drag_n"]["value"], 65.0)
+        self.assertEqual(sample["prototype_last_downforce_n"]["value"], 180.0)
+        self.assertEqual(sample["prototype_last_speed_m_s"]["value"], 55.0)
+        self.assertEqual(sample["prototype_worker_telemetry_status"]["value"],
+                         "force_calls_issued_effect_unverified")
+        self.assertFalse(self.app.prototypeReadback()["physical_effect_verified"])
         self.shared["wimna.prototype.effect.v1"] = None
         self.car.aeroDrag = None
         self.app.captureSample()
@@ -208,6 +246,59 @@ class OvernightLuaTests(unittest.TestCase):
                   if item["kind"] == "sample"][-1]["data"]
         self.assertEqual(sample["aero_drag_native"]["quality"], "unavailable")
         self.assertEqual(sample["prototype_effect_status"]["quality"], "unavailable")
+
+    def test_finalize_request_requires_exact_ids_ai_and_saved_ack(self) -> None:
+        self.mode("baseline")
+        self.app.startRun("collection", None, False)
+        self.state.recordedCrossings = 2
+        self.car.isAIControlled = True
+        run_id = self.state.runId
+        request = {
+            "schema_version": 1, "command": "save_and_shutdown",
+            "run_id": run_id, "physical_session_id": run_id + "-s0",
+            "session_mode_id": "wimna-ai-baseline",
+            "nonce": "a" * 32, "min_recorded_lap_crossings": 2,
+        }
+        request_path = "documents/WIMNA Test Director/bridge/overnight_finalize_request.json"
+        ack_path = "documents/WIMNA Test Director/bridge/overnight_finalize_ack.json"
+        self.saved[request_path] = json.dumps(request)
+        self.lua.globals().finalizeRequest = self.lua.table_from(
+            {**request, "physical_session_id": "wrong-native-session"})
+        self.app.handleOvernightFinalizeRequest()
+        self.assertEqual(self.state.status, "active")
+        self.assertIsNone(self.saved[ack_path])
+        self.lua.globals().finalizeRequest = self.lua.table_from(request)
+        self.state.overnightFinalizeNextCheckAt = None
+        self.app.handleOvernightFinalizeRequest()
+        self.assertEqual(self.state.status, "ended")
+        self.assertIsNotNone(self.saved[ack_path])
+        self.assertEqual(self.lua.globals().shutdownCalls, 1)
+        ack = json.loads(self.saved[ack_path])
+        self.assertEqual(ack["nonce"], "a" * 32)
+        self.assertEqual(ack["physical_session_id"], run_id + "-s0")
+        self.assertEqual(ack["status"], "save_complete_shutdown_requested")
+        self.assertTrue(self.lua.globals().ensuredPaths[ack_path])
+        last_chunk = ("documents/WIMNA Test Director/bridge/runs/" + run_id +
+                      f"/{self.state.chunkIndex:06d}.jsonl")
+        self.assertTrue(self.lua.globals().ensuredPaths[last_chunk])
+
+    def test_finalize_request_without_ai_readback_does_not_end(self) -> None:
+        self.mode("baseline")
+        self.app.startRun("collection", None, False)
+        self.state.recordedCrossings = 2
+        self.car.isAIControlled = None
+        request = {
+            "schema_version": 1, "command": "save_and_shutdown",
+            "run_id": self.state.runId,
+            "physical_session_id": self.state.runId + "-s0",
+            "session_mode_id": "wimna-ai-baseline",
+            "nonce": "b" * 32, "min_recorded_lap_crossings": 2,
+        }
+        self.saved["documents/WIMNA Test Director/bridge/overnight_finalize_request.json"] = json.dumps(request)
+        self.lua.globals().finalizeRequest = self.lua.table_from(request)
+        self.app.handleOvernightFinalizeRequest()
+        self.assertEqual(self.state.status, "active")
+        self.assertEqual(self.lua.globals().shutdownCalls, 0)
 
 
 if __name__ == "__main__":

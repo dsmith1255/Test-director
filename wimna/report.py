@@ -330,6 +330,15 @@ def export_bundle(store: Store, destination: str | Path, *, config: dict,
             lines.append("")
         else:
             lines += ["No matched baseline and Plan C AI stints have passed the recorded identity, lap, and starting-condition checks.", ""]
+        rejected = prototype.get("rejected_candidate_pairs") or []
+        if rejected:
+            lines += ["Withheld Plan C comparisons:", ""]
+            for candidate in rejected[:8]:
+                reasons = "; ".join(candidate.get("reasons") or []) or "matching evidence unavailable"
+                lines.append(f"- `{candidate.get('baseline_run_id')}` vs `{candidate.get('plan_c_run_id')}`: {reasons}.")
+            if len(rejected) > 8:
+                lines.append(f"- {len(rejected) - 8} more withheld candidate pairs are listed in `collection_stints.json`.")
+            lines.append("")
         lines += ["The prototype requests bounded aerodynamic forces; its cooling change is analysis-only. Native-invalid, zero-cut Plan C crossings remain exploratory simulator observations. A worker request does not prove the force affected FH26. The full lap inventory, rejected pairs, parameter hashes, and conditional human transfers are in `collection_stints.json`. No case-packet gain is added to the observed delta.", ""]
         comparisons = collection.get("tire_comparisons") or []
         lines += ["### Tire stint contrasts", ""]

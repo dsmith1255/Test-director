@@ -20,6 +20,11 @@ local function stamp()
   ac.store('wimna.prototype.permission.v1', 0)
   -- CSP marks physics.addForce laps invalid. AI control can also invalidate laps.
   ac.store('wimna.prototype.native_invalid_expected.v1', 1)
+  ac.store('wimna.prototype.force_call_pairs.v1', 0)
+  ac.store('wimna.prototype.last_drag_n.v1', nil)
+  ac.store('wimna.prototype.last_downforce_n.v1', nil)
+  ac.store('wimna.prototype.last_speed_m_s.v1', nil)
+  ac.store('wimna.prototype.worker_telemetry_status.v1', 'pending')
 end
 
 local function startWorker()

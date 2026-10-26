@@ -96,6 +96,8 @@ if (Test-Path -LiteralPath $staleOneFileExe -PathType Leaf) {
     --add-data "$template;." --hidden-import wimna.analysis `
     --hidden-import wimna.collection_analysis --hidden-import wimna.collection_index `
     --hidden-import wimna.case_import --hidden-import wimna.models `
+    --hidden-import wimna.cm_presets --hidden-import wimna.overnight_prepare `
+    --hidden-import wimna.overnight_live `
     --hidden-import wimna.report $entry
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
 
