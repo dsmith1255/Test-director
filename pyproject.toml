@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wimna-test-director"
-version = "0.4.2"
+version = "0.5.0"
 description = "Offline Assetto Corsa stint data collection and modeling"
 requires-python = ">=3.10"
 

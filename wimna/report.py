@@ -314,7 +314,23 @@ def export_bundle(store: Store, destination: str | Path, *, config: dict,
                 f"| {counts.get('AI', 0)} / {counts.get('HUMAN', 0)} / {counts.get('UNKNOWN', 0)} "
                 f"| {_display(air, ' °C', 1)} / {_display(track, ' °C', 1)} "
                 f"| {ai_laps} / {exploratory_ai} / {human_laps} | {(stint.get('thermal') or {}).get('status', 'unavailable')} |")
-        lines += ["", "The full per-wheel native wear, temperature, pressure, load and slip summaries, fuel, energy and lap quality records are in `collection_stints.json`. Native wear is not assumed to mean remaining tire life. An AI lap with native invalidity and zero reported cuts is exploratory only; the invalidity cause is unknown. A native-valid lap with no recorded flags is not independently verified contact- or spin-free because those fault channels are unavailable. Custom thermal temperatures are analysis-only.", ""]
+        lines += ["", "The full per-wheel native wear, temperature, pressure, load and slip summaries, fuel, energy and lap quality records are in `collection_stints.json`. Native wear is not assumed to mean remaining tire life. An AI lap with native invalidity and zero reported cuts is exploratory only; the Plan C force would invalidate its native lap when applied, while other causes require separate review. A native-valid lap with no recorded flags is not independently verified contact- or spin-free because those fault channels are unavailable. Custom thermal temperatures are analysis-only.", ""]
+        prototype = collection.get("package_prototype_analysis") or {}
+        lines += ["### Plan C simulator prototype pairs", ""]
+        if prototype.get("pairs"):
+            lines += ["| Track / layout | Baseline AI median | Plan C AI median | Plan C − baseline | Evidence |",
+                      "|---|---:|---:|---:|---|",]
+            for pair in prototype["pairs"]:
+                lines.append(
+                    f"| {pair.get('track_id')} / {pair.get('layout_id')} "
+                    f"| {_display((pair.get('baseline') or {}).get('pace', {}).get('median_s'), ' s')} "
+                    f"| {_display((pair.get('plan_c') or {}).get('pace', {}).get('median_s'), ' s')} "
+                    f"| {_display(pair.get('delta_plan_c_minus_baseline_s'), ' s')} "
+                    f"| exploratory simulated intervention; physical effect unverified |")
+            lines.append("")
+        else:
+            lines += ["No matched baseline and Plan C AI stints have passed the recorded identity, lap, and starting-condition checks.", ""]
+        lines += ["The prototype requests bounded aerodynamic forces; its cooling change is analysis-only. Native-invalid, zero-cut Plan C crossings remain exploratory simulator observations. A worker request does not prove the force affected FH26. The full lap inventory, rejected pairs, parameter hashes, and conditional human transfers are in `collection_stints.json`. No case-packet gain is added to the observed delta.", ""]
         comparisons = collection.get("tire_comparisons") or []
         lines += ["### Tire stint contrasts", ""]
         if comparisons:

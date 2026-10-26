@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "queue_id": "wimna-eight-hour-paired-pilot-fixture",
+  "launch_mode": "dry_run",
+  "evidence": "SYNTHETIC",
+  "notes": "This is an editable rehearsal queue. Hashes and variant IDs below are fixture values, not installed FH26 files. No Content Manager launch protocol or C1 physics effect is verified. Replace with file-derived manifests and a verified launcher before any unattended game run. Each track has one stock and one C1 session under the same requested weather; cool/hot are not balanced within every track in this first pilot.",
+  "defaults": {
+    "min_lap_crossings": 8,
+    "planned_switch_after_s": 3600,
+    "max_session_s": 4200,
+    "start_timeout_s": 120,
+    "finalize_timeout_s": 120,
+    "watchdog_s": 30,
+    "max_dropped_samples": 0,
+    "tolerances": {
+      "ambient_air_c": 1.0,
+      "track_surface_c": 1.0,
+      "fuel_start_l": 0.5
+    },
+    "expected": {
+      "car_id": "rss_formula_hybrid_2026",
+      "car_version": "fixture-local-version-unverified",
+      "layout_id": "default",
+      "mode_id": "wimna-ai-thermal",
+      "tire_compound": "C4",
+      "energy_profile_id": "fixture-frozen-baseline",
+      "fuel_start_l": 35.0
+    }
+  },
+  "sessions": [
+    {
+      "session_id": "01-spa-stock-cool",
+      "expected": {
+        "preset_id": "fixture-spa-stock-cool",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+        "track_id": "spa",
+        "variant_id": "fixture-stock",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "ambient_air_c": 12.0,
+        "track_surface_c": 17.0
+      }
+    },
+    {
+      "session_id": "02-monza-c1-hot",
+      "expected": {
+        "preset_id": "fixture-monza-c1-hot",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+        "track_id": "monza",
+        "variant_id": "fixture-c1-unbuilt",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+        "ambient_air_c": 36.0,
+        "track_surface_c": 36.0
+      }
+    },
+    {
+      "session_id": "03-imola-stock-cool",
+      "expected": {
+        "preset_id": "fixture-imola-stock-cool",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+        "track_id": "imola",
+        "variant_id": "fixture-stock",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "ambient_air_c": 12.0,
+        "track_surface_c": 17.0
+      }
+    },
+    {
+      "session_id": "04-silverstone-c1-hot",
+      "expected": {
+        "preset_id": "fixture-silverstone-c1-hot",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+        "track_id": "ks_silverstone",
+        "layout_id": "gp",
+        "variant_id": "fixture-c1-unbuilt",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+        "ambient_air_c": 36.0,
+        "track_surface_c": 36.0
+      }
+    },
+    {
+      "session_id": "05-spa-c1-cool",
+      "expected": {
+        "preset_id": "fixture-spa-c1-cool",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+        "track_id": "spa",
+        "variant_id": "fixture-c1-unbuilt",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+        "ambient_air_c": 12.0,
+        "track_surface_c": 17.0
+      }
+    },
+    {
+      "session_id": "06-monza-stock-hot",
+      "expected": {
+        "preset_id": "fixture-monza-stock-hot",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000006",
+        "track_id": "monza",
+        "variant_id": "fixture-stock",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "ambient_air_c": 36.0,
+        "track_surface_c": 36.0
+      }
+    },
+    {
+      "session_id": "07-imola-c1-cool",
+      "expected": {
+        "preset_id": "fixture-imola-c1-cool",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "track_id": "imola",
+        "variant_id": "fixture-c1-unbuilt",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+        "ambient_air_c": 12.0,
+        "track_surface_c": 17.0
+      }
+    },
+    {
+      "session_id": "08-silverstone-stock-hot",
+      "expected": {
+        "preset_id": "fixture-silverstone-stock-hot",
+        "preset_sha256": "0000000000000000000000000000000000000000000000000000000000000008",
+        "track_id": "ks_silverstone",
+        "layout_id": "gp",
+        "variant_id": "fixture-stock",
+        "variant_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "ambient_air_c": 36.0,
+        "track_surface_c": 36.0
+      }
+    }
+  ]
+}

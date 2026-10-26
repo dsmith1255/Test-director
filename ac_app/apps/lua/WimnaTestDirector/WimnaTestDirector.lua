@@ -10,6 +10,10 @@ local MAX_BUFFER_LINES = 120
 local AI_SWITCH_TIMEOUT_S = 3.0
 local AI_RELEASE_MAX_SPEED_KMH = 2.0
 local NULL = {}
+local EXPECTED_PROTOTYPE_HASHES = {
+  baseline = '1b0fd209d1c46087bdbf3f8ff0ac6fe30472ae7938b29d662371772e0496bb12',
+  plan_c = '4cafb3a4cf76afe426126b660996fd29777a58f031322c4ccc9a2ef974697cd9'
+}
 local EMPTY_ARRAY = setmetatable({}, { __wimna_array = true })
 local sim = ac.getSim()
 local car = ac.getCar(0)
@@ -190,6 +194,23 @@ if not layoutId and trackFolder and layoutFolder then
   end
 end
 
+local function uiVersion(path)
+  if type(path) ~= 'string' or path == '' then return nil end
+  local document = safeCall(function() return io.load(path) end, nil)
+  if type(document) ~= 'string' or document == '' then return nil end
+  local parsed = safeCall(function() return JSON.parse(document) end, nil)
+  local version = type(parsed) == 'table' and parsed.version or nil
+  if type(version) == 'string' and version ~= '' then return version end
+  if type(version) == 'number' then return tostring(version) end
+  return nil
+end
+
+local carContentFolder = safeCall(function() return ac.getFolder(ac.FolderID.ContentCars) end, nil)
+local carVersion = carContentFolder and carId and
+  uiVersion(pathJoin(pathJoin(pathJoin(carContentFolder, carId), 'ui'), 'ui_car.json')) or nil
+local trackLayoutUIFolder = safeCall(function() return ac.getFolder(ac.FolderID.CurrentTrackLayoutUI) end, nil)
+local trackVersion = trackLayoutUIFolder and uiVersion(pathJoin(trackLayoutUIFolder, 'ui_track.json')) or nil
+
 local cards = {
   C = { laps = '3-5 learning', instruction = 'Keep one SOC target. Avoid Boost/Overtake. Complete three accepted learning laps, then freeze or save the profile.', next = 'Confirm FRZ AUTO or the applied Manual copy.' },
   R = { laps = '5 timed', instruction = 'Drive the fastest clean pace you can repeat on reference fuel, tire and energy settings.', next = 'Box, save, and prepare contrasting fuel.' },
@@ -253,6 +274,9 @@ local state = {
   collectionLastPitlane = nil,
   collectionLastPit = nil,
   collectionNotice = nil,
+  overnightAutoStartAttempted = false,
+  overnightAutoStartStatus = nil,
+  overnightProbeAccumulator = 0,
   startupUtc = utcNow()
 }
 
@@ -414,8 +438,61 @@ end
 
 local function sessionModeReadback()
   local value = safeCall(function() return ac.load('wimna.session_mode.v1') end, nil)
-  if value == 'wimna-test' or value == 'wimna-ai-thermal' then return value end
+  if value == 'wimna-test' or value == 'wimna-ai-thermal' or
+    value == 'wimna-ai-baseline' or value == 'wimna-ai-plan-c' then return value end
   return nil
+end
+
+local function overnightVariantForMode(mode)
+  if mode == 'wimna-ai-baseline' then return 'baseline' end
+  if mode == 'wimna-ai-plan-c' then return 'plan_c' end
+  return nil
+end
+
+local function sharedScalar(key)
+  local value = safeCall(function() return ac.load(key) end, nil)
+  if type(value) == 'string' and #value <= 32768 then return value end
+  if type(value) == 'number' or type(value) == 'boolean' then return value end
+  return nil
+end
+
+-- Shared keys are written by the WIMNA new mode. They describe its requested
+-- prototype and worker status; none of them verifies an aerodynamic effect.
+local function prototypeReadback()
+  local mode = sessionModeReadback()
+  local expected = overnightVariantForMode(mode)
+  if not expected then return nil end
+  local parametersJson = sharedScalar('wimna.prototype.parameters.v1')
+  local parsedParameters = type(parametersJson) == 'string' and
+    safeCall(function() return JSON.parse(parametersJson) end, nil) or nil
+  local hash = sharedScalar('wimna.prototype.parameter_hash.v1')
+  local computedHash = type(parametersJson) == 'string' and
+    safeCall(function() return ac.checksumSHA256(parametersJson) end, nil) or nil
+  if type(computedHash) == 'string' then computedHash = computedHash:lower() end
+  local permission = sharedScalar('wimna.prototype.permission.v1')
+  local invalid = sharedScalar('wimna.prototype.native_invalid_expected.v1')
+  local forceInvalid = nil
+  if invalid == 1 then forceInvalid = true end
+  if invalid == 0 then forceInvalid = false end
+  return {
+    mode_id = mode,
+    variant_id = sharedScalar('wimna.prototype.variant.v1') or NULL,
+    expected_variant_id = expected,
+    parameter_hash_reported = hash or NULL,
+    parameter_hash_format_valid = type(hash) == 'string' and #hash == 64 and
+      hash:match('^[0-9a-f]+$') ~= nil,
+    parameter_hash_computed = computedHash or NULL,
+    parameter_hash_verified = type(hash) == 'string' and computedHash == hash,
+    parameters_json_requested = parametersJson or NULL,
+    parameters_json_parseable = type(parsedParameters) == 'table',
+    parameters_variant_id = type(parsedParameters) == 'table' and
+      (readField(parsedParameters, 'variant') or NULL) or NULL,
+    effect_status = sharedScalar('wimna.prototype.effect.v1') or NULL,
+    physics_permission_reported = permission or NULL,
+    force_native_lap_invalid_expected = nullableBoolean(forceInvalid),
+    source = 'CSP_SESSION_SHARED_STORE',
+    physical_effect_verified = false
+  }
 end
 
 local function nativeSessionName()
@@ -460,6 +537,7 @@ local function collectionBoundaryData(reason)
     observed_track_c = readField(sim, 'roadTemperature') or NULL,
     session_mode_id = sessionModeReadback() or NULL,
     session_mode = sessionModeReadback() or NULL,
+    prototype = prototypeReadback() or NULL,
     extended_physics_observed = nullableBoolean(readField(car, 'extendedPhysics')),
     extended_physics = nullableBoolean(readField(car, 'extendedPhysics')),
     setup_hash = NULL,
@@ -544,11 +622,14 @@ writeCurrentState = function()
     observed_tyre_compound = observedCompound() or NULL,
     session_mode_id = sessionModeReadback() or NULL,
     session_mode = sessionModeReadback() or NULL,
+    prototype = prototypeReadback() or NULL,
     extended_physics_observed = nullableBoolean(readField(car, 'extendedPhysics')),
     extended_physics = nullableBoolean(readField(car, 'extendedPhysics')),
     car_id = carId or NULL,
+    car_version = carVersion or NULL,
     track_id = trackId or NULL,
     layout_id = layoutId or NULL,
+    track_version = trackVersion or NULL,
     sim_time_s = state.simTimeS,
     samples_attempted = state.sampleCount,
     recorded_lap_crossings = state.recordedCrossings,
@@ -568,6 +649,7 @@ writeCurrentState = function()
     ai_auto_requested = state.aiAutoRequested,
     ai_control_request = requestedAI,
     ai_stop_unverified = state.aiStopUnverified,
+    overnight_auto_start_status = state.overnightAutoStartStatus or NULL,
     updated_utc = utcNow()
   }
   pcall(function() io.save(pathJoin(bridge, 'current_state.json'), json(data), true) end)
@@ -809,9 +891,10 @@ local function pollAiControl()
   end
 end
 
-local function startRun(mode, block, autoAi)
+local function startRun(mode, block, autoAi, startTrigger)
   local requestAutoAi = autoAi == true or mode == 'ai_thermal'
   local observedAI = aiReadback()
+  local prototype = prototypeReadback()
   if state.aiRequest ~= nil then
     state.aiNotice = 'An AI-control request is still pending. Wait for native readback or its timeout before starting another run.'
     writeCurrentState()
@@ -832,7 +915,7 @@ local function startRun(mode, block, autoAi)
   if state.runId and state.status ~= 'ended' then finishRun('new_start_choice', nil) end
   state.runId = newRunId()
   state.mode = mode
-  state.lastStartChoice = mode
+  state.lastStartChoice = startTrigger or mode
   state.blockId = block or 'C'
   state.status = 'active'
   state.seq = 0
@@ -893,12 +976,16 @@ local function startRun(mode, block, autoAi)
       physical_session_id = physicalSessionId(),
       started_utc = utcNow(),
       car_id = carId or NULL,
+      car_version = carVersion or NULL,
       track_id = trackId or NULL,
       layout_id = layoutId or NULL,
+      track_version = trackVersion or NULL,
       selection = mode,
+      start_trigger = startTrigger or 'driver_button',
       session_mode_id = sessionModeReadback() or NULL,
       session_mode = sessionModeReadback() or NULL,
       session_mode_source = sessionModeReadback() and 'CSP_SESSION_SHARED_STORE' or 'unavailable',
+      prototype = prototype or NULL,
       native_session_name = nativeSessionName() or NULL,
       native_session_type = readField(sim, 'raceSessionType') or NULL,
       native_session_index = readField(sim, 'currentSessionIndex') or NULL,
@@ -910,14 +997,14 @@ local function startRun(mode, block, autoAi)
       planned_tire_label = (mode == 'collection' or mode == 'ai_thermal') and optionalText(state.collectionTireLabel) or NULL,
       requested_tyre_compound = (mode == 'collection' or mode == 'ai_thermal') and optionalText(state.collectionRequestedCompound) or NULL,
       condition_label = (mode == 'collection' or mode == 'ai_thermal') and optionalText(state.collectionConditionLabel) or NULL,
+      condition_label_source = startTrigger == 'overnight_mode_auto' and
+        'WIMNA_MODE_CONFIGURATION' or 'DRIVER_ENTERED_UNVERIFIED',
       setup_label_requested = (mode == 'collection' or mode == 'ai_thermal') and optionalText(state.collectionSetupLabel) or NULL,
       setup_label_source = (mode == 'collection' or mode == 'ai_thermal') and
         optionalText(state.collectionSetupLabel) ~= NULL and 'DRIVER_ENTERED_UNVERIFIED' or NULL,
       individual_block = block or NULL,
-      app_version = '0.4.2',
+      app_version = '0.5.0',
       csp_version_code = safeCall(function() return ac.getPatchVersionCode() end, NULL),
-      car_version = NULL,
-      track_version = NULL,
       profile_hash = NULL,
       setup_hash = NULL,
       source = 'CSP app runtime probe',
@@ -929,7 +1016,8 @@ local function startRun(mode, block, autoAi)
         (observedAI == true and 'preexisting_unattributed' or
           observedAI == nil and 'readback_unavailable' or requestAutoAi and 'planned_route_unverified' or 'not_requested') or NULL,
       ai_control_observed_at_start = nullableBoolean(observedAI),
-      ai_native_lap_policy = mode == 'ai_thermal' and 'campaign_separate_collection_data_usable' or NULL,
+      ai_native_lap_policy = prototype and 'AI takeover invalidates the current native lap; Plan C force may also invalidate native laps' or
+        mode == 'ai_thermal' and 'campaign_separate_collection_data_usable' or NULL,
       note = 'A fresh run ID never proves continuity of a physical stint.'
     }
     local ok, result = pcall(function() return io.save(pathJoin(runDirectory(), 'manifest.json'), json(manifest)) end)
@@ -957,13 +1045,14 @@ local function startRun(mode, block, autoAi)
         member_type = type(ac.trySimKeyPressCommand), source = 'ac.trySimKeyPressCommand(ACTIVATE_AI)' }
     }
     queue(envelope('capability', capabilities), false)
-    local eventType = mode == 'full' and 'ui_start_full' or mode == 'resume' and 'ui_resume'
+    local eventType = startTrigger == 'overnight_mode_auto' and 'overnight_auto_start' or
+      mode == 'full' and 'ui_start_full' or mode == 'resume' and 'ui_resume'
       or mode == 'ai_thermal' and 'ui_start_ai_thermal' or mode == 'collection' and 'ui_start_collection' or 'ui_individual'
     emitEvent(eventType, { block_id = block or NULL, car_id = carId or NULL,
       track_id = trackId or NULL, layout_id = layoutId or NULL,
       campaign_eligible = mode ~= 'ai_thermal' and mode ~= 'collection',
       collection_id = (mode == 'collection' or mode == 'ai_thermal') and state.runId or NULL,
-      ai_auto_requested = requestAutoAi })
+      ai_auto_requested = requestAutoAi, prototype = prototype or NULL })
     if mode == 'collection' or mode == 'ai_thermal' then startCollectionStint('run_started') end
     if mode == 'ai_thermal' then
       emitEvent('ai_control_observed', { observed = nullableBoolean(observedAI),
@@ -980,6 +1069,60 @@ local function startRun(mode, block, autoAi)
     end
   end
   writeCurrentState()
+end
+
+local function maybeAutoStartOvernight(dt)
+  if state.overnightAutoStartAttempted or state.runId then return end
+  state.overnightProbeAccumulator = state.overnightProbeAccumulator +
+    (type(dt) == 'number' and math.max(0, dt) or 0)
+  if state.overnightProbeAccumulator < 0.5 then return end
+  state.overnightProbeAccumulator = 0
+  local mode = sessionModeReadback()
+  local expectedVariant = overnightVariantForMode(mode)
+  if not expectedVariant then return end
+  local prototype = prototypeReadback()
+  if prototype == nil or prototype.variant_id ~= expectedVariant then
+    state.overnightAutoStartStatus = 'Waiting for a matching overnight mode and prototype variant; manual Start AI Recording remains available.'
+    return
+  end
+  if not prototype.parameter_hash_verified or
+    prototype.parameter_hash_reported ~= EXPECTED_PROTOTYPE_HASHES[expectedVariant] or
+    not prototype.parameters_json_parseable or prototype.parameters_variant_id ~= expectedVariant then
+    state.overnightAutoStartStatus = 'Prototype parameters or reported hash are unavailable; check the mode installation before automatic recording.'
+    return
+  end
+  if (expectedVariant == 'baseline' and prototype.force_native_lap_invalid_expected ~= false) or
+    (expectedVariant == 'plan_c' and prototype.force_native_lap_invalid_expected ~= true) then
+    state.overnightAutoStartStatus = 'Prototype native lap-validity policy does not match the selected mode.'
+    return
+  end
+  local expectedEffect = expectedVariant == 'baseline' and 'none' or 'worker_requested_effect_unverified'
+  if prototype.effect_status ~= expectedEffect then
+    state.overnightAutoStartStatus = 'Prototype worker status is ' ..
+      tostring(prototype.effect_status == NULL and 'unavailable' or prototype.effect_status) ..
+      '; automatic recording is waiting. Manual Start AI Recording remains available.'
+    return
+  end
+  if prototype.physics_permission_reported ~= 1 or
+    not physicsAutopilotAllowed(probePhysicsAutopilot()) or
+    readField(car, 'extendedPhysics') ~= true or
+    readField(car, 'physicsAvailable') ~= true then
+    state.overnightAutoStartStatus = 'Native physics permission or extended-physics readback is unavailable; use manual recording after checking the mode.'
+    return
+  end
+  if aiReadback() == nil or readField(sim, 'isReplayActive') == true then
+    state.overnightAutoStartStatus = 'Waiting for live native AI-control readback; manual recording remains available.'
+    return
+  end
+  local storageOk, storageError = probeStorage()
+  if not storageOk then
+    state.overnightAutoStartStatus = storageError
+    return
+  end
+  state.collectionConditionLabel = expectedVariant
+  state.overnightAutoStartAttempted = true
+  state.overnightAutoStartStatus = 'Overnight collection started; AI takeover still requires native ON readback.'
+  startRun('collection', nil, true, 'overnight_mode_auto')
 end
 
 local function setLapFlag(flag)
@@ -1061,6 +1204,7 @@ local function detectSessionEvents()
         local flags = lapFlags()
         if partialRunLap then flags[#flags + 1] = 'partial_run_lap' end
         if state.status == 'paused' then flags[#flags + 1] = 'experiment_paused' end
+        local prototype = prototypeReadback()
         emitEvent('lap_complete', {
           lap_index = completed,
           lap_time_s = lastLapS,
@@ -1069,7 +1213,10 @@ local function detectSessionEvents()
           collection_id = collectionEnabled() and state.runId or NULL,
           collection_stint_id = state.collectionStintId or NULL,
           observed_tyre_compound = observedCompound() or NULL,
-          ai_controlled_at_boundary = nullableBoolean(aiReadback()),
+           ai_controlled_at_boundary = nullableBoolean(aiReadback()),
+           prototype_variant_requested = prototype and prototype.variant_id or NULL,
+           force_native_lap_invalid_expected = nullableBoolean(prototype and
+             prototype.force_native_lap_invalid_expected),
           last_lap_cuts_count = readField(car, 'lastLapCutsCount') or NULL,
           flags = flags,
           session_index = sessionIndex == nil and NULL or sessionIndex
@@ -1155,6 +1302,10 @@ local function captureSample()
   add('compound_index_native', car, 'compoundIndex', 'native_index')
   add('car_mass_kg_native', car, 'mass', 'kg')
   add('ballast_kg_native', car, 'ballast', 'kg')
+  add('restrictor_native', car, 'restrictor', 'native_setting')
+  add('aero_lift_front_native', car, 'aeroLiftFront', 'native_coefficient')
+  add('aero_lift_rear_native', car, 'aeroLiftRear', 'native_coefficient')
+  add('aero_drag_native', car, 'aeroDrag', 'native_coefficient')
   add('brake_bias_native', car, 'brakeBias', 'native_fraction_unverified')
   add('mguk_delivery_native', car, 'mgukDelivery', 'native_index')
   add('mguk_recovery_native', car, 'mgukRecovery', 'native_index')
@@ -1237,6 +1388,20 @@ local function captureSample()
   c.component_temperature_c = channel(nil, 'degC', 'RSS_UNVERIFIED')
   c.active_aero_state = channel(nil, 'native_state', 'RSS_UNVERIFIED')
   c.tyre_compound = channel(safeCall(function() return car:tyresName() end, nil), 'name', 'CSP_STATE')
+  local prototype = prototypeReadback()
+  local forceInvalid = nil
+  if prototype and prototype.force_native_lap_invalid_expected ~= NULL then
+    forceInvalid = prototype.force_native_lap_invalid_expected
+  end
+  c.prototype_variant_requested = channel(prototype and prototype.variant_id ~= NULL and prototype.variant_id or nil,
+    'identifier', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_parameter_hash_reported = channel(prototype and prototype.parameter_hash_reported ~= NULL and
+    prototype.parameter_hash_reported or nil, 'sha256_reported', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_effect_status = channel(prototype and prototype.effect_status ~= NULL and prototype.effect_status or nil,
+    'status_not_physical_effect', 'CSP_SESSION_SHARED_STORE')
+  c.prototype_physics_permission_reported = channel(prototype and prototype.physics_permission_reported ~= NULL and
+    prototype.physics_permission_reported or nil, 'boolean_0_or_1', 'CSP_SESSION_SHARED_STORE')
+  c.force_native_lap_invalid_expected = channel(forceInvalid, 'boolean', 'CSP_SESSION_SHARED_STORE')
   c.collection_id = channel(collectionEnabled() and state.runId or nil, 'identifier', 'WIMNA_APP')
   c.collection_stint_id = channel(state.collectionStintId, 'identifier', 'WIMNA_APP')
   c.is_ai_controlled = channel(aiReadback(), 'boolean', 'CSP_STATE')
@@ -1271,6 +1436,7 @@ function script.update(dt)
     state.stateAccumulator = 0
     writeCurrentState()
   end
+  maybeAutoStartOvernight(dt)
   if not state.runId then return end
   pollAiControl()
   if state.status == 'ended' then return end
@@ -1338,8 +1504,17 @@ function script.windowMain()
   ui.text('WIMNA Test Director')
   ui.text('Track: ' .. display(trackId, 'unavailable') .. (layoutId and (' / ' .. layoutId) or ''))
   ui.text('Car: ' .. display(carId, 'unavailable'))
+  local prototype = prototypeReadback()
+  if prototype then
+    ui.textWrapped('Overnight prototype: ' .. display(prototype.variant_id == NULL and nil or prototype.variant_id,
+      'unavailable') .. ' | Worker: ' .. display(prototype.effect_status == NULL and nil or prototype.effect_status,
+      'unavailable') .. '. Worker request is not physical-effect verification.')
+  end
   if state.runId == nil or state.status == 'ended' then
     ui.textWrapped(state.autoLaunchStatus)
+    if overnightVariantForMode(sessionModeReadback()) and state.overnightAutoStartStatus then
+      ui.textWrapped(state.overnightAutoStartStatus)
+    end
     if state.aiNotice then ui.textWrapped(state.aiNotice) end
     local observedAI = aiReadback()
     if observedAI == true then

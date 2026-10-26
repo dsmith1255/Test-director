@@ -10,7 +10,7 @@ OUTPUT = ROOT / "dist" / "WIMNA-Test-Director-source.zip"
 ROOT_FILES = (
     ".gitignore", "README.md", "START_HERE.txt", "campaign.template.json",
     "assumptions.example.json", "pyproject.toml", "requirements-build.txt",
-    "requirements-test.txt",
+    "requirements-test.txt", "overnight.queue.example.json",
     "Build-Release.ps1", "launch_gui.py", "package_source.py",
 )
 SOURCE_DIRS = ("wimna", "tests", "docs", "ac_app", ".github")

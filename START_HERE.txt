@@ -1,4 +1,16 @@
-WIMNA Test Director 0.4.2 — build and collection handoff
+WIMNA Test Director 0.5.0 — supervised Plan C paired-mode pilot
+
+Status: source-built candidate. Do not leave the AI running unattended until a live two-session smoke test verifies the installed modes, native AI ON readback, recording, saved data, restart, and the requested physics effect. The Plan C mode is an experimental aero-force proxy with an analysis-only cooling assumption; it is not the complete upgrade package.
+
+1. Install the 0.5.0 Content Manager ZIP and portable companion. Keep the companion open. Select the installed FH26 car and one exact track/layout.
+2. Choose WIMNA AI Baseline for the first short session. Set and note the tire compound, starting fuel, weather/air and track temperatures, energy target/map, setup and assists. The paired modes should start AI collection automatically only after mode, physics and recorder checks pass. Confirm Recorder ON, samples increasing and AI control readback ON. If automatic start is blocked, check the displayed reason; Start AI Recording remains the manual fallback.
+3. End Collection Run to save the trace. This does not brake the car or release AI steering. Exit the session through the game menu while AI remains in control, or stop safely and use Stop AI Driver at Rest only at 2 km/h or less with a person ready to steer. Verify native AI OFF before driving.
+4. Start a separate WIMNA AI Plan C Prototype session on the same track with the same tire, starting fuel, weather, energy map, setup and assists. Recheck the observed starting state; a new session cannot inherit physical tire, fuel or battery state. Confirm the prototype ID and parameter hash, native AI ON, recorder activity and saved crossings. The mode's worker request alone does not prove an applied force or lap-time benefit.
+5. Expect native Plan C laps to be marked invalid when the CSP force runs; AI takeover can also invalidate a native lap. Keep full crossing times and raw telemetry with cut, spin, reset and gap flags. Do not call these official clean laps. Export both runs and inspect the paired data before considering a longer test.
+
+Do not leave the game running unattended overnight yet. See docs/PLAN_C_PROTOTYPE.md for the prototype's assumptions and live gates.
+
+Prior-release 0.4.2 build and collection handoff (retained for reference)
 
 Read README.md, campaign.template.json and docs/INTEGRATION.md. Run replay and tests, then build the Content Manager ZIP and separate portable companion. Discover the target Assetto Corsa root, Content Manager, installed CSP SDK, FH26 car and exact Spa, Silverstone GP, Imola and modern Monza GP layouts. Import the authoritative Update6 workbook; never substitute ForReview. Version 0.4.2 is a source-tested release candidate that makes unrestricted recording the primary workflow and shows raw lap crossings. It has not yet been installed or recorded live. The earlier 0.4.0 build passed a local FH26/Spa collection smoke test. Tyler's installation remains unverified.
 

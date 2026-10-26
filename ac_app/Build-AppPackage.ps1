@@ -8,7 +8,9 @@ $entry = Join-Path $appRoot 'apps\lua\WimnaTestDirector\WimnaTestDirector.lua'
 $appManifest = Join-Path $appRoot 'apps\lua\WimnaTestDirector\manifest.ini'
 $modeManifest = Join-Path $appRoot 'extension\lua\new-modes\wimna-test\manifest.ini'
 $aiModeManifest = Join-Path $appRoot 'extension\lua\new-modes\wimna-ai-thermal\manifest.ini'
-foreach ($required in @($entry, $appManifest, $modeManifest, $aiModeManifest)) {
+$baselineModeManifest = Join-Path $appRoot 'extension\lua\new-modes\wimna-ai-baseline\manifest.ini'
+$planCModeManifest = Join-Path $appRoot 'extension\lua\new-modes\wimna-ai-plan-c\manifest.ini'
+foreach ($required in @($entry, $appManifest, $modeManifest, $aiModeManifest, $baselineModeManifest, $planCModeManifest)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Package source missing: $required"
     }

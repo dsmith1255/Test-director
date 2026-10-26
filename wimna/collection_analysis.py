@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from .collection_index import scan_collection
 from .models import ThermalSample, ThermalScenario, run_thermal_scenario, thermal_assumption_profiles
+from .package_analysis import analyze_package_pairs, prototype_from_samples
 from .store import Store
 
 
@@ -409,6 +410,8 @@ def _summarize_stint(store: Store, stint: Mapping[str, Any], samples: list[dict[
         "physical_effect_status": "observed_trace" if evidence == "MEASURED" else "synthetic_only",
         "warnings": [],
     }
+    result["prototype"] = prototype_from_samples(
+        manifest.get("prototype"), data, result["session_mode"])
     if compound is None:
         result["warnings"].append("one consistent observed tire compound is unavailable; requested label is not readback")
     if fuel_refill:
@@ -721,10 +724,12 @@ def analyze_collections(store: Store) -> dict[str, Any]:
                                           run["manifest"], run["mode"]))
     comparisons = _comparisons(stints)
     anchors = _human_anchors(stints)
+    package_prototype_analysis = analyze_package_pairs(stints, anchors)
     return {"status": "available" if stints else "unavailable",
             "model_version": "wimna_collection_analysis_v1",
             "stints": stints, "tire_comparisons": comparisons,
             "human_pace_anchors": anchors,
+            "package_prototype_analysis": package_prototype_analysis,
             "anchored_tire_scenarios": _anchored_tire_scenarios(comparisons, anchors, stints),
             "matching_policy": {"tolerances": MATCH_POLICY,
                                 "category": "exploratory_policy_not_instrument_resolution"},

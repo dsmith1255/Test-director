@@ -1,6 +1,6 @@
-# GitHub handoff for WIMNA Test Director 0.4.2
+# GitHub handoff for WIMNA Test Director 0.5.0
 
-This is a **release candidate**. Version 0.4.2 makes unrestricted recording the primary in-game workflow and shows raw lap crossings independently of optional guided acceptance. It passed source tests and packaging checks but has not yet been checked in Assetto Corsa. Version 0.4.0 recorded one local FH26/Spa AI stint; 0.4.1 introduced compact recording and safe AI end. Do not describe 0.4.2 as live verified on Tyler's installation.
+This is an **experimental release candidate**. Version 0.5.0 adds paired AI baseline and Plan C aerodynamic-proxy modes, exact prototype parameter hashes, a matched-stint analysis, and a synthetic overnight-queue rehearsal. The Plan C force and automatic track switching have not been checked live. The earlier 0.4.0 build recorded one local FH26/Spa AI stint; do not describe 0.5.0 as live verified on Tyler's installation.
 
 ## Repository scope
 
@@ -27,23 +27,23 @@ Before attaching files, compare SHA-256 values in `dist/release-hashes.json` wit
 
 | Asset | Use |
 |---|---|
-| `WIMNA-Test-Director-CM-0.4.2.zip` | Drag into Content Manager; includes the Lua app and two modes. |
-| `WIMNA-Test-Director-companion-0.4.2.zip` | Extract and run the portable Windows companion. |
-| `WIMNA-Test-Director-source-0.4.2.zip` | Reproducible source handoff. GitHub source checkout also contains this material. |
-| `release-0.4.2-hashes.json` | Checksums and build time. |
+| `WIMNA-Test-Director-CM-0.5.0.zip` | Drag into Content Manager; includes the Lua app and four modes. |
+| `WIMNA-Test-Director-companion-0.5.0.zip` | Extract and run the portable Windows companion. |
+| `WIMNA-Test-Director-source-0.5.0.zip` | Reproducible source handoff. GitHub source checkout also contains this material. |
+| `release-hashes.json` | Checksums and build time for the identically hashed versioned archives. |
 | `WIMNA-Synthetic-Sample-Results.zip` | Optional example; clearly label it **SYNTHETIC**. |
 
 Do not attach the local `live_smoke_*` folders, `WIMNA-results-*` folders, the installed RSS archive, the case workbook, or personal installation paths.
 
 ## GitHub release text
 
-**Title:** WIMNA Test Director 0.4.2 release candidate
+**Title:** WIMNA Test Director 0.5.0 experimental candidate
 
-**Summary:** Installs a CSP Lua data-collection app and two Practice-derived Content Manager modes. The separate Windows companion imports and exports labeled tire stints and assumption-labeled model results. AI and human controller readback are retained with simulator telemetry. Collection has no hard clock or lap quota.
+**Summary:** Installs a CSP Lua data-collection app and four Practice-derived Content Manager modes. Two new modes pair an unchanged FH26 baseline with a small, assumed Plan C aerodynamic-force proxy. The separate Windows companion imports saved stints and reports matched AI contrasts with their evidence limits. Collection has no hard clock or lap quota.
 
-**Changes in 0.4.2:** Start Recording and Start AI Recording are the primary actions and collect every lap crossing without a settings checklist or acceptance quota. The C/R/F/E/M/V protocol is clearly optional. The overlay separates raw crossings from guided acceptance, and the companion shows the crossing count. The 0.4.1 safe AI stop and compact recorder remain included.
+**Changes in 0.5.0:** The paired modes stamp exact parameter identities and can start AI collection after guarded readbacks. The companion inventories every lap and pairs stints only under recorded matching conditions; any transfer to human pace remains an assumption. A local queue can rehearse eight hourly sessions with synthetic readbacks. Its live launch/close adapters are disabled until a two-session smoke test verifies them.
 
-**Verification:** 124 automated checks and a complete 24-block synthetic replay passed at packaging. The earlier 0.4.0 local FH26/Spa run saved 5,042 AI-controlled samples at 19.86 Hz with no reported gaps or drops; both laps were native invalid and there was no tire comparison. The 0.4.2 entry flow and crossing count, newer compact writer, AI end action, tire handoff, restart recovery, and Tyler's installation remain unverified live. Custom thermal temperatures are analysis-only; direct RSS electrical power and native component temperatures were unavailable in the local test.
+**Verification:** 157 automated checks, a complete 24-block synthetic campaign replay, and an eight-session synthetic overnight-queue rehearsal passed. The earlier 0.4.0 local FH26/Spa run saved 5,042 AI-controlled samples at 19.86 Hz with no reported gaps or drops; both laps were native invalid. The 0.5.0 force, automatic start, paired recordings, session switching, restart recovery, and Tyler's installation remain unverified live. Custom cooling and component temperatures are analysis-only. The prototype does not edit or redistribute RSS car files.
 
 **Install:** Download the CM ZIP and companion ZIP, then follow `docs/TYLER_GUIDE.md`. Link to that page in the release description.
 

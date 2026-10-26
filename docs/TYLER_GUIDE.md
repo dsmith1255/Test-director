@@ -1,5 +1,19 @@
 # Tyler's WIMNA Test Director guide
 
+## 0.5.0 Plan C paired-mode pilot — supervised smoke test first
+
+**Status:** The two new modes have passed source checks, but their effect and automatic startup still need a live FH26 test. Run a short supervised pair before considering a longer session. WIMNA's Plan C prototype adds a small experimental aero-force proxy; its cooling change remains a model assumption.
+
+1. Install the **0.5.0 CM ZIP** and companion, then open the companion. In Content Manager, select your installed FH26 and one exact track/layout. Choose **WIMNA AI Baseline** for the first session. Select and note the tire compound, starting fuel, weather, energy target/map, setup and assists.
+2. Launch and check the WIMNA window. The paired mode should start recording and request AI automatically once its mode, physics and storage checks pass. Confirm **Recorder: ON**, an increasing sample count and **AI control readback: ON**. If automatic start is blocked, read the on-screen reason; **Start AI Recording** remains available for a supervised manual start.
+3. Save with **End Collection Run**. This does not brake the car or switch AI off. Exit through the game menu while AI is still steering, or stop safely and press **Stop AI Driver at Rest** only at **2 km/h or less**, with a person ready to steer. Confirm native AI **OFF** before taking control.
+4. Start a **separate** session on that same track with **WIMNA AI Plan C Prototype**. Match the tire, starting fuel, weather, energy map, setup and assists. Recheck the observed starting state because tire, fuel and battery state do not carry into a new session. Confirm the prototype ID/hash, recorder activity and native AI ON. The worker request shown in the app is not proof the force changed the car; compare the saved speed and lap-distance traces.
+5. Export both runs. CSP's force is expected to make Plan C laps **native invalid**, and AI takeover may invalidate a lap as well. Keep complete crossing times and telemetry with cuts, spins, resets and gaps separately flagged. These are experimental simulator comparisons, not official clean laps or a measured complete Plan C upgrade.
+
+Do not use these steps to leave the game running unattended overnight. Complete the two-session live smoke test, including save/restart and data checks, first. See [Plan C prototype](PLAN_C_PROTOTYPE.md) for the tested scope and limits.
+
+## Prior-release 0.4.x collection guidance (retained for reference)
+
 ## If the older Full Program shows 0 attempted
 
 Version 0.4.1's **Start Full Program** opened the optional guided protocol. It could record telemetry while refusing to count laps until setup and learning confirmations were complete. The current **Start Recording** collects and counts raw lap crossings without those gates. End the older guided run, install the current app and start a new recording; the older raw data remains saved. A fresh run has a new physical state and cannot inherit tire or fuel continuity from the old run.
