@@ -126,7 +126,8 @@ class ReplayCaptureTests(unittest.TestCase):
                                       "queue_path": str(self.queue_file.resolve()),
                                       "checkpoint_path": str(checkpoint.resolve())}),
                           encoding="utf-8")
-        self.assertEqual(_checkpoint_from_runner_config(runner), checkpoint)
+        self.assertEqual(_checkpoint_from_runner_config(runner).resolve(),
+                         checkpoint.resolve())
         stint = {"run_id": "run-1", "physical_session_id": "native-1",
                  "collection_stint_id": "s0", "start_trigger": "overnight_mode_auto",
                  "evidence": "MEASURED", "laps": []}

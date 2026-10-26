@@ -106,8 +106,8 @@ class CampaignPreparationTests(unittest.TestCase):
             "readbacks_smoke_tested")))
         self.assertFalse((self.bridge.parent / "overnight.checkpoint.json").exists())
         config = json.loads(Path(result["config"]).read_text(encoding="utf-8"))
-        self.assertEqual(config["checkpoint_path"],
-                         str(self.output / "overnight.checkpoint.json"))
+        self.assertEqual(Path(config["checkpoint_path"]).resolve(),
+                         (self.output / "overnight.checkpoint.json").resolve())
         self.assertFalse((self.output / "overnight.checkpoint.json").exists())
         clone = dict(queue, launch_mode="dry_run")
         clone_path = self.root / "synthetic-clone.queue.json"

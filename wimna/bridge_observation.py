@@ -56,7 +56,8 @@ def assetto_corsa_process_running() -> bool | None:
     try:
         result = subprocess.run(
             ["tasklist", "/FO", "CSV", "/NH"], capture_output=True,
-            text=True, timeout=5, check=True)
+            text=True, timeout=5, check=True,
+            creationflags=subprocess.CREATE_NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None
     names = set()

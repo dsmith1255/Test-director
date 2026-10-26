@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
-from wimna.bridge_observation import BridgeObservationProvider, PROTOTYPE_HASHES
+from wimna.bridge_observation import (BridgeObservationProvider, PROTOTYPE_HASHES,
+                                      assetto_corsa_process_running)
 from wimna.overnight import SessionSpec
 
 
@@ -35,6 +39,14 @@ def _channel(value, unit: str = "native") -> dict:
 
 
 class BridgeObservationTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows process check")
+    def test_process_probe_does_not_create_a_console_window(self):
+        with patch("wimna.bridge_observation.subprocess.run") as run:
+            run.return_value.stdout = '"acs.exe","123","Console","1","0 K"\n'
+            self.assertTrue(assetto_corsa_process_running())
+        self.assertEqual(run.call_args.kwargs["creationflags"],
+                         subprocess.CREATE_NO_WINDOW)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

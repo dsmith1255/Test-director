@@ -41,7 +41,7 @@ class BackgroundStartTests(unittest.TestCase):
 
     def _spawn(self, command: list[str], cwd: Path):
         self.spawned.append(command)
-        self.assertEqual(cwd, self.root)
+        self.assertEqual(cwd.resolve(), self.root.resolve())
         return SimpleNamespace(pid=43210)
 
     def test_explicit_start_records_pid_without_launching_in_parent(self) -> None:
